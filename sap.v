@@ -6,7 +6,7 @@ module counter4(input enable,
                 input reset,
                 input[3:0] in,
                 output reg[3:0] out);
-  always @(posedge clk)
+  always @(posedge clk) begin
     if (reset) begin
       out <= 4'b0;
     end else if (load) begin
@@ -14,14 +14,7 @@ module counter4(input enable,
     end else if (enable) begin
       out <= out + 1;
     end
-endmodule
-
-module counter2(input clk, input reset, output reg[1:0] out);
-  always @(posedge clk)
-    if (reset)
-      out <= 2'b0;
-    else
-      out <= out + 1;
+  end // @(posedge clk)
 endmodule
 
 // A 4-bit register
@@ -48,6 +41,14 @@ module reg8(input load, input load_hi, input clk, input reset, input[7:0] in,
   assign out = {hi_out, lo_out};
 endmodule
 
+`define NOP 4'h0
+`define JMP 4'h1
+`define LDA 4'h2
+`define LDB 4'h3
+`define LAL 4'h4
+`define LAH 4'h5
+`define ADD 4'h6
+
 // The program ROM
 module rom(input enable,
            input[3:0] addr,
@@ -56,11 +57,12 @@ module rom(input enable,
   always @* begin
     if (enable)
       case (addr)
-        4'b0000: out = 8'h6E; // 0: LAL #$E
-        4'b0001: out = 8'h71; // 1: LAH #$1
-        4'b0010: out = 8'h4E; // 2: LDB $E
-        //4'b0011: out = 8'h50; // 3: ADD
-        4'b0100: out = 8'h14; // 4: J #$4
+        //4'b0000: out = {`LAH, 4'h1}; // 0: LAL #$E
+        //4'b0001: out = {`LAL, 4'hE}; // 1: LAH #$1
+        4'b0000: out = {`LDA, 4'hF}; // 1: LAH #$1
+        4'b0001: out = {`LDB, 4'hE}; // 2: LDB $E
+        4'b0010: out = {`ADD, 4'h0}; // 3: ADD
+        4'b0011: out = {`JMP, 4'h3}; // 4: J #$4
         4'b1110: out = 8'h42; // E: .data $42
         4'b1111: out = 8'h1E; // F: .data $1E
         default: out = 8'h00;
@@ -71,71 +73,68 @@ module rom(input enable,
 endmodule
 
 // The micro-op ROM
-module uop(input enable,
-           input[5:0] addr,
-           output reg[11:0] out);
+module ctrl(input[3:0] opcode,
+            input clk,
+            input reset,
+            output reg[11:0] out);
+
+  localparam CI = 1 << 0;
+  localparam CO = 1 << 1;
+  localparam CE = 1 << 2;
+  localparam MI = 1 << 3;
+  localparam MO = 1 << 4;
+  localparam II = 1 << 5;
+  localparam IO = 1 << 6;
+  localparam AH = 1 << 7;
+  localparam AI = 1 << 8;
+  localparam BI = 1 << 9;
+  localparam SO = 1 << 10;
+  localparam OI = 1 << 11;
+
+  reg [3:0] state;
+  reg [3:0] next_state;
+
+  parameter S0 = 4'b0001,
+            S1 = 4'b0010,
+            S2 = 4'b0100,
+            S3 = 4'b1000;
+
+  always @(negedge clk or posedge reset) begin
+    if (reset) begin
+      state <= S0;
+    end else begin
+      state <= next_state;
+    end
+  end
 
   always @* begin
-    if (!enable)
-      out = 12'hZZZ;
-    else
-      case (addr)
-        //                   OSBAAIIRMCCC
-        //                   IOIIHOIOIEOI
-        // NOP (0)
-        6'b000000: out = 12'b000000001010; // MI CO
-        6'b000001: out = 12'b000000110000; // II RO
-        6'b000010: out = 12'b000000000000; //
-        6'b000011: out = 12'b000000000100; // CE
-        // JUMP (1)
-        6'b000100: out = 12'b000000001010; // MI CO
-        6'b000101: out = 12'b000000110000; // II RO
-        6'b000110: out = 12'b000001000001; // CI IO
-        6'b000111: out = 12'b000000000000; //
-        // JUMP (2)
-        6'b001000: out = 12'b000000001010; // MI CO
-        6'b001001: out = 12'b000000110000; // II RO
-        6'b001010: out = 12'b000001000001; // CI IO
-        6'b001011: out = 12'b000000000000; //
-        // LDA (3)
-        6'b001100: out = 12'b000000001010; // MI CO
-        6'b001101: out = 12'b000000110000; // II RO
-        6'b001110: out = 12'b000001001000; // MI IO
-        6'b001111: out = 12'b000100010100; // AI RO CE
-        // LDB (4)
-        6'b010000: out = 12'b000000001010; // MI CO      MAR <- PC
-        6'b010001: out = 12'b000000111000; // II RO MI   IREG, MAR <- MEM
-        6'b010010: out = 12'b001000010000; // BI RO
-        6'b010011: out = 12'b110000100100; // SO OI CE
-        // ADD (5)
-        6'b010100: out = 12'b000000001010; // MI CO
-        6'b010101: out = 12'b000000110000; // II RO
-        6'b010110: out = 12'b110000000000; // OI SO
-        6'b010111: out = 12'b000000000100; // CE
-        // LAL (6) [Load A-Reg lower nibble]
-        6'b011000: out = 12'b000000001010; // MI CO
-        6'b011001: out = 12'b000000110000; // II RO
-        6'b011010: out = 12'b000101000000; // AI IO
-        6'b011011: out = 12'b000000000100; // CE
-        // LAH (6) [Load A-Reg high nibble]
-        6'b011100: out = 12'b000000001010; // MI CO
-        6'b011101: out = 12'b000000110000; // II RO
-        6'b011110: out = 12'b000011000000; // AI IO
-        6'b011111: out = 12'b000000000100; // CE
-
-        default:   out = 12'h00;
-      endcase
+    case (state)
+      S0: begin next_state = S1; out = MI | CO; end
+      S1: begin next_state = S2; out = II | MO; end
+      default:
+        case (opcode)
+          `NOP: begin next_state = S0; out = CE; end
+          `JMP: begin next_state = S0; out = CI | IO; end
+          `LDA: case (state)
+              S2: begin next_state = S3; out = MI | IO; end
+              S3: begin next_state = S0; out = AI | MO | CE; end
+             endcase
+          `LDB: case (state)
+              S2: begin next_state = S3; out = MI | IO; end
+              S3: begin next_state = S0; out = BI | MO | CE; end
+             endcase
+          `ADD: begin next_state = S0; out = OI | SO | CE; end
+          `LAL: begin next_state = S0; out = AI | IO | CE; end
+          `LAH: begin next_state = S0; out = AH | IO | CE; end
+          default: begin next_state = S0; out = CE; end
+        endcase
+    endcase
   end
+
 endmodule
 
-module alu(input enable, input clk, input reset, input[7:0] a, input[7:0] b,
-             output reg[7:0] out);
-    always @(posedge clk) begin
-      if (reset)
-        out <= 8'h00;
-      else if (enable)
-        out <= a + b;
-    end
+module alu(input[7:0] a, input[7:0] b, output [7:0] out);
+    assign out = a + b;
 endmodule
 
 module buf8(input wire[7:0] x, input wire enable, output wire[7:0] y);
@@ -185,23 +184,20 @@ module sap(input wire clk, input wire reset, output wire[7:0] out);
 
   // The ALU unit
   wire[7:0] alu_out;
-  alu alu(.enable(HI), .clk(clk), .reset(reset), .a(areg_out), .b(breg_out),
+  alu alu(.a(areg_out), .b(breg_out),
           .out(alu_out));
-  buf8 aluo(alu_out, so, bus);
+  buf8 sreg(alu_out, so, bus);
 
   // The O (output) register
   reg8 oreg(.load(oi), .load_hi(LO), .clk(clk), .reset(reset), .in(bus),
             .out(out));
 
-  // The micro-instruction counter
-  wire[1:0] ucounter_out;
-  counter2 ucounter(.clk(clk), .reset(reset), .out(ucounter_out));
-
-  // And finally the micro-op ROM
-  uop uop(.enable(HI), .addr({ireg_out[7:4], ucounter_out}),
-          .out({oi, so, bi, ai, ah, io, ii, ro, mi, ce, co, ci}));
+  // And finally the control unit
+  ctrl ctrl(.clk(clk), .reset(reset), .opcode(ireg_out[7:4]),
+            .out({oi, so, bi, ai, ah, io, ii, ro, mi, ce, co, ci}));
 endmodule
 
+`ifdef TEST
 module tb();
   reg clk, reset;
   wire[7:0] out;
@@ -209,11 +205,13 @@ module tb();
   sap DUT (.clk(clk), .reset(reset), .out(out));
 
   initial begin
-    clk = 1'b0;
+    clk = 1'b1;
     reset = 1'b1;
-    repeat(4) #10 clk = ~clk;
-    reset = 1'b0;
-    forever #10 clk = ~clk;
+    #10 reset = 1'b0;
+  end
+
+  initial begin
+    forever #5 clk = ~clk;
   end
 
   initial begin
@@ -222,7 +220,9 @@ module tb();
   end
 
   initial begin
-    $monitor("%3d: %02x", $time, out);
+    $display("time A  B  O");
+    $monitor("%3d: %h %h %h", $time, DUT.areg.out, DUT.breg.out, out);
     #500 $finish;
   end
 endmodule
+`endif
