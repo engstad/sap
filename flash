@@ -1,0 +1,1 @@
+openFPGALoader --fpga-part xc7a100tfgg484 -f -b arty sap.bit

@@ -1,0 +1,1 @@
+openFPGALoader -c digilent --freq 15000000 sap.bit

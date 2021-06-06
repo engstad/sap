@@ -1,0 +1,10 @@
+#!/bin/sh
+cd build
+rm *.ngc *.ngd *.par *.bit *.xml *.bgn *.drc _xmsgs/* *.xrpt *.map *.mrp *.ncd *.ngm *.pcf *.ngm *.bld *.log *.html *.xwbt *.xpi xc7a100t-1-csg324* *.ngo
+# /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/edif2ngd sap.edif
+/opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/ngdbuild ../sap.edif -p xc7a100t-1-csg324 -uc ../sap.ucf
+/opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/map -w sap.ngd -o sap_map.ncd
+/opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/par -w sap_map.ncd sap.ncd sap_map.pcf
+/opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/bitgen -w sap.ncd
+cp sap.bit ..
+cd ..
