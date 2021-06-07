@@ -1,0 +1,8 @@
+run
+-top top
+-ifn ../sap.prj
+-ifmt MIXED
+-opt_mode SPEED
+-opt_level 1
+-ofn sap.ngc
+-p xc7a100t-1-csg324

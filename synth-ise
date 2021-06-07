@@ -1,2 +1,2 @@
 #!/bin/sh
-/opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/xst -ifn sap.xst
+cd build && /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/xst -ifn ../sap.xst
