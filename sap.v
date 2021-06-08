@@ -1,18 +1,18 @@
 `timescale 1ms / 1us
 
-module counter4(input enable,
+module counter8(input            enable,
                 input            load,
                 input            clk,
                 input            reset,
-                input [3:0]      in,
-                output reg [3:0] out);
+                input [7:0]      in,
+                output reg [7:0] out);
    always @(posedge clk) begin
       if (reset) begin
-         out <= 4'b0;
+         out <= 8'b0;
       end else if (load) begin
          out <= in;
       end else if (enable) begin
-         out <= out + 1;
+         out <= out + 2;
       end
    end // @(posedge clk)
 endmodule
@@ -37,239 +37,390 @@ module reg4(input load, input clk, input reset, input[3:0] in,
 endmodule
 
 // An 8-bit register (implemented w/2 4-bit registers)
-module reg8(input load_lo, input load_hi, input clk, input reset, input[7:0] in,
+module reg8(input             clk,
+            input             reset,
+            input             load,
+            input [7:0]       in,
             output wire [7:0] out);
    wire [3:0]                 lo_out, hi_out;
    wire [3:0]                 lo_in = in[3:0];
    wire [3:0]                 hi_in = in[7:4];
-   reg4 lo(.load(load_lo), .clk(clk), .reset(reset),
+   reg4 lo(.load(load), .clk(clk), .reset(reset),
            .in(lo_in), .out(lo_out));
-   reg4 hi(.load(load_hi), .clk(clk), .reset(reset),
+   reg4 hi(.load(load), .clk(clk), .reset(reset),
            .in(hi_in), .out(hi_out));
    assign out = {hi_out, lo_out};
 endmodule
 
-`define NOP 4'h0
-`define LDA 4'h1
-`define ADD 4'h2
-`define SUB 4'h3
-`define STA 4'h4
-`define LDI 4'h5
-`define JMP 4'h6
-`define JC  4'h7
-`define JZ  4'h8
-`define LDB 4'h9
-`define STB 4'hA
-`define ADI 4'hB
-`define SBI 4'hC
-`define JNZ 4'hD
-`define OUT 4'hE
-`define HLT 4'hF
-
 //
 // Hopefully synthesize as distributed RAM
 //
-module ram(input        clk,
-           input        write_enable,
-           input [3:0]  addr,
-           input [7:0]  data_in,
-           output [7:0] data_out);
+module ram(input             clk,
+           // Port A
+           input [7:0]       pc,
+           output reg [15:0] ir,
+           // Port B
+           input             we,
+           input [7:0]       addr,
+           input [7:0]       in,
+           output reg [7:0]  out);
 
-   reg [7:0]                mem[0:(1<<4)-1];
+   reg [7:0]                mem[0:(1<<8)-1];
 
    initial $readmemh("rom.txt", mem);
 
    always @(posedge clk)
-     if (write_enable)
-       mem[addr] <= data_in;
+     ir <= { mem[pc + 1], mem[pc] };
 
-   assign data_out = mem[addr];
+   always @(posedge clk)
+     if (we)
+       mem[addr] <= in;
+
+   always @(posedge clk)
+     out <= mem[addr];
+
 endmodule // ram
 
-// The micro-op ROM
-module ctrl(input [3:0]       opcode,
-            input             zero,
-            input             carry,
-            input             clk,
-            input             reset,
-            output reg [15:0] out);
+module regs(input clk,
+            input en0, input[2:0] num0, output wire[7:0] out0,
+            input en1, input[2:0] num1, output wire[7:0] out1,
+            input wr, input[2:0] num, input wire[7:0] in);
 
-   localparam PC_I = 1 << 0; // program counter input (from bus) enable
-   localparam PC_O = 1 << 1; // program counter output (to bus) enable
-   localparam PC_E = 1 << 2; // program counter enable (increment)
-   localparam MAR_I = 1 << 3; // memory address register input (from bus)
-   localparam MEM_O = 1 << 4; // output ROM memory to bus
-   localparam IR_I = 1 << 5; // instruction register input (from bus)
-   localparam IR_O = 1 << 6; // instruction register output (to bus)
-   localparam AREG_L = 1 << 7; // A register load low nibble (from bus)
-   localparam AREG_H = 1 << 8; // A register load high nibble (from bus)
-   localparam AREG_O = 1 << 9;
-   localparam BREG_I = 1 << 10; // B register load (from bus)
-   localparam BREG_O = 1 << 11;
-   localparam ALU_O = 1 << 12; // ALU output
-   localparam OUT_I = 1 << 13; // OUT register load (from bus)
-   localparam MEM_I = 1 << 14; //
-   localparam SUB = 1 << 15;
+   reg [7:0]      regs[3:0];
 
-   localparam AREG_I = AREG_L | AREG_H;
+   integer        j;
+   initial
+     for (j = 0; j < 8; j++)
+       regs[j] = {8{1'b0}};
 
-   reg [1:0]                  state = S0;
-   reg [1:0]                  next_state;
+   assign out0 = en0 ? regs[num0] : 8'hZZ;
 
-   parameter
-     S0 = 2'b00,
-     S1 = 2'b01,
-     S2 = 2'b10,
-     S3 = 2'b11;
+   assign out1 = en1 ? regs[num1] : 8'hZZ;
 
-   always @*
-     case (state)
-       S0: next_state = S1;
-       S1: next_state = S2;
-       S2: case (opcode)
-             `LDA, `STA, `LDB, `STB, `OUT: next_state = S3;
-             default: next_state = S0;
-           endcase
-       S3: next_state = S0;
-     endcase
+   always @(posedge clk)
+     if (wr)
+       regs[num] <= in;
+endmodule // regs
 
-   always @*
-     case (state)
-       // Send the program counter (PC) to the memory address register (MAR)
-       S0: out = MAR_I | PC_O;
-       // Send the memory output (at PC) to the instruction register (IR)
-       S1: out = IR_I | MEM_O;
-       S2: case (opcode)
-             // Increment program counter
-             `NOP: out =  PC_E;
-             // Send the instruction register (low nibble) to the memory address register.
-             `LDA: out =  MAR_I | IR_O;
-             `STA: out =  MAR_I | IR_O;
-             `LDB: out =  MAR_I | IR_O;
-             `STB: out =  MAR_I | IR_O;
-             `OUT: out =  MAR_I | IR_O;
-             // Send the ALU output (A+B) into the A register, and increment program counter.
-             `ADD: out =  AREG_I | ALU_O | PC_E;
-             // Send the ALU output (A-B) into the A register, and increment program counter.
-             `SUB: out =  AREG_I | ALU_O | SUB | PC_E;
-             // Send the instruction register (low nibble) to the low bits of the A register.
-             `LDI: out =  AREG_L | IR_O | PC_E;
-             // Send the instruction register (low nibble) to the program counter.
-             `JMP: out =  PC_I | IR_O;
-             // Send the instruction register (low nibble) to the program counter if the zero flag is set.
-             `JZ:  out =  zero ? (PC_I | IR_O) : PC_E;
-             // Send the instruction register (low nibble) to the program counter if the zero flag is not set.
-             `JNZ: out =  zero ? PC_E : (PC_I | IR_O);
-             // Do nothing.
-             `HLT: out =  0;
-             default: out =  0;
-           endcase // case (opcode)
-       S3: case (opcode)
-             // AREG = MEM
-             `LDA: out =  AREG_I | MEM_O | PC_E;
-             // MEM = AREG
-             `STA: out =  MEM_I | AREG_O | PC_E;
-             // BREG = MEM
-             `LDB: out =  BREG_I | MEM_O | PC_E;
-             // MEM = BREG
-             `STB: out =  MEM_I | BREG_O | PC_E;
-             // OUT = MEM
-             `OUT: out =  OUT_I | MEM_O | PC_E;
-             default: out =  0;
-           endcase // case (opcode)
-     endcase // case (state)
-
-   always @(posedge clk or posedge reset) begin
-      if (reset) begin
-         state <= S0;
-      end else begin
-         state <= next_state;
-      end
-   end
-
-endmodule
-
-module alu(input[7:0] a, input[7:0] b, output [7:0] out, input sub, output zero, output carry);
-   assign {carry, out} = sub ? a - b : a + b;
+module alu(input[7:0] a, input[7:0] b, input[7:0] c, output [7:0] out, input sub, output zero, output carry);
+   assign {carry, out} = sub ? a - b : a + b + c;
    assign zero = out == 0;
    //assign pos = out > 0;
 endmodule
 
-module buf8(input wire[7:0] x, input wire enable, output wire[7:0] y);
-   assign y = enable ? x : 8'hZZ;
-endmodule
-
-module sap(input wire clk, input wire reset, output wire[7:0] out);
-   //localparam HI = 1'b1;
-   //localparam LO = 1'b0;
-
-   // Control signals
-   wire mem_i;
-   wire sub, out_i, alu_o, breg_o, breg_i, areg_o, areg_h, areg_l, ir_o, ir_i, mem_o, mar_i, pc_e, pc_o, pc_i;
-
-   // The bus
-   wire [7:0] bus;
-
-   // Program Counter implemented as a 4-bit counter
-   wire [3:0] pc_reg;
-   counter4 pc(.enable(pc_e), .load(pc_i), .clk(clk), .reset(reset),
-               .in(bus[3:0]), .out(pc_reg));
-   buf8 po({4'b0000, pc_reg}, pc_o, bus);
-
-   // Memory Address Register as a 4-bit register
-   wire [3:0] mar_reg;
-   reg4 mar(.load(mar_i), .clk(clk), .reset(reset), .in(bus[3:0]), .out(mar_reg));
-
-   // The program ROM is 4-bit addressable 8-bit memory.
-   wire [7:0] mem_reg;
-   ram ram(.clk(clk),
-           .write_enable(mem_i),
-           .addr(mar_reg),
-           .data_in(bus),
-           .data_out(mem_reg)
-           );
-   buf8 memo(mem_reg, mem_o, bus);
+`define MVI 4'h0
+`define ADI 4'h1
+`define OUT 4'h2
+`define HLT 4'h3
+`define NOP 4'h4
 
 
-   // The Instruction Register
-   wire [7:0] ireg_reg;
-   reg8 ireg(.load_lo(ir_i), .load_hi(ir_i), .clk(clk), .reset(reset), .in(bus),
-             .out(ireg_reg));
-   buf8 irego({4'b0000, ireg_reg[3:0]}, ir_o, bus);
+module stage1(
+              input wire        clk,
+              input wire        reset,
+
+              input wire [15:0] ir_reg,
+              output reg [2:0]  areg_no,
+              output reg [7:0]  areg,
+              output reg [2:0]  breg_no,
+              output reg [7:0]  breg,
+              output reg [3:0]  opcode,
+              output reg [7:0]  immediate,
+
+              // Register Interface (loads)
+              output reg        regs_en0,
+              output reg [2:0]  regs_no0,
+              input wire [7:0]  regs_out0,
+
+              output reg        regs_en1,
+              output reg [2:0]  regs_no1,
+              input wire [7:0]  regs_out1,
+
+              // Address register interface
+              output wire       addr_i,
+              input wire        addr_in,
+              output wire [7:0] addr_reg,
+
+              // Flag register interface
+              input wire        zero_i,
+              input wire        zero_in,
+              output wire       zero_out,
+
+              // Program counter interface
+              output wire       pc_i,
+              output wire [7:0] pc_in,
+              output wire       pc_e
+              );
+
+   //
+   // ========== STAGE 1 ============
+   //
+
+   reg [3:0]                    opc;
+   reg [7:0]                    imm;
+   reg [2:0]                    dst;
+   reg [2:0]                    src;
+
+   always @*
+     begin
+        opc <= `HLT;
+        imm <= 0;
+        dst <= 0;
+        src <= 0;
+
+        if (ir_reg[15:11] == 5'b01011) begin
+           opc <= `MVI;
+           dst <= ir_reg[10:8];
+           imm <= ir_reg[7:0];
+        end else if (ir_reg[15:11] == 5'b10010) begin
+           opc <= `ADI;
+           dst <= ir_reg[9:7];
+           src <= ir_reg[6:4];
+           imm <= {4'b0000, ir_reg[3:0]};
+        end else if (ir_reg[15:13] == 3'b111) begin
+           if (ir_reg[11:8] == 4'b1110) begin
+              opc <= `OUT;
+              src <= ir_reg[2:0];
+           end else if (ir_reg[11:8] == 4'b0000) begin
+              opc <= `NOP;
+           end
+        end
+     end
+
+   // Setting addr_i to true will cause mem_reg <= mem[addr_reg].
+   assign addr_i = 1'b0;
+   assign addr_reg = 8'b00000000;
 
    // The A Register (ALU input)
-   wire [7:0] areg_reg;
-   reg8 areg(.load_lo(areg_l), .load_hi(areg_h), .clk(clk), .reset(reset), .in(bus),
-             .out(areg_reg));
-   buf8 arego(areg_reg, areg_o, bus);
+   wire       areg_i;
+   reg [7:0]  areg_in;
+   reg8 areg8(.clk(clk), .reset(reset),
+              .load(areg_i), .in(areg_in), .out(areg));
 
    // The B register (ALU input)
-   wire [7:0] breg_reg;
-   reg8 breg(.load_lo(breg_i), .load_hi(breg_i), .clk(clk), .reset(reset), .in(bus),
-             .out(breg_reg));
-   buf8 brego(breg_reg, breg_o, bus);
+   wire       breg_i;
+   reg [7:0]  breg_in;
+   reg8 breg8(.clk(clk), .reset(reset),
+              .load(breg_i), .in(breg_in), .out(breg));
 
-   // The ALU unit
-   wire [7:0] alu_reg;
-   wire       zero_flag, carry_flag;
-   alu alu(.a(areg_reg), .b(breg_reg),
-           .out(alu_reg), .sub(sub),
-           .zero(zero_flag), .carry(carry_flag));
-   buf8 aluo(alu_reg, alu_o, bus);
+   assign areg_i = (opc == `MVI || opc == `ADI || opc == `OUT);
+   assign breg_i = (opc == `ADI);
+
+   always @(*)
+     if (areg_i) begin
+        regs_en0 <= 1'b1;
+        regs_no0 <= dst;
+        areg_in <= regs_out0;
+     end else begin
+        regs_en0 <= 1'b0;
+        regs_no0 <= 0;
+        areg_in <= 0;
+     end
+
+   always @(*)
+     if (breg_i) begin
+        regs_en1 <= 1'b1;
+        regs_no1 <= src;
+        breg_in <= regs_out1;
+     end else begin
+        regs_en1 <= 1'b0;
+        regs_no1 <= 0;
+        breg_in <= 0;
+     end
 
    // Flags
-   wire       zero;
-   wire       carry;
-   reg1 zeroreg(.load(alu_o), .clk(clk), .reset(reset), .in(zero_flag), .out(zero));
-   reg1 carryreg(.load(alu_o), .clk(clk), .reset(reset), .in(carry_flag), .out(carry));
+   reg1 zeroreg(.clk(clk), .reset(reset),
+                .load(zero_i), .in(zero_in), .out(zero_out));
 
-   // The O (output) register
-   reg8 oreg(.load_lo(out_i), .load_hi(out_i), .clk(clk), .reset(reset), .in(bus),
-             .out(out));
+   // Jumps
+   assign pc_i = 1'b0;
+   assign pc_in = pc_i ? imm : 0;
+   assign pc_e = !pc_i && (opc != `HLT);
 
-   // And finally the control unit
-   ctrl ctrl(.clk(clk), .reset(reset), .opcode(ireg_reg[7:4]), .zero(zero), .carry(carry),
-             .out({sub, mem_i, out_i, alu_o, breg_o, breg_i, areg_o, areg_h, areg_l, ir_o, ir_i, mem_o, mar_i, pc_e, pc_o, pc_i}));
+
+   always @(posedge clk)
+     if (areg_i)
+       areg_no <= dst;
+     else
+       areg_no <= 3'b000;
+
+   always @(posedge clk)
+     if (breg_i)
+       breg_no <= src;
+     else
+       breg_no <= 0;
+
+   always @(posedge clk)
+     opcode <= opc;
+
+   always @(posedge clk)
+     immediate <= imm;
+
+endmodule // stage1
+
+
+module sap(input wire clk, input wire reset, output reg[7:0] out);
+
+   // Program Counter implemented as a 4-bit counter
+   wire pc_e;
+   wire pc_i;
+   wire [7:0] pc_in; // If pc_i is true, pc_in is loaded as the new value.
+   wire [7:0] pc_reg;
+   counter8 pc(.enable(pc_e), .load(pc_i), .clk(clk), .reset(reset),
+               .in(pc_in), .out(pc_reg));
+
+   // Instruction register
+   wire [15:0] ir_reg;
+
+   // Address register
+   wire       addr_i;
+   wire [7:0] addr_in; // If addr_i is true, addr_in is the new value next clock.
+   wire [7:0] addr_reg;
+
+   reg8 ar(.load(addr_i), .clk(clk), .reset(reset), .in(addr_in), .out(addr_reg));
+
+   // Memory register
+   reg        mem_i;    // If enabled: mem[AR] <= mem_in
+   reg [7:0]  mem_in;
+   wire [7:0] mem_reg;  // Always:     mem_reg <= mem[AR]
+   ram ram(.clk(clk),
+           .pc(pc_reg),
+           .ir(ir_reg),
+           .addr(addr_reg),
+           .we(mem_i),
+           .in(mem_in),
+           .out(mem_reg)
+           );
+
+   // Register File
+   wire       regs_en0;
+   wire [2:0] regs_no0;
+   wire [7:0] regs_out0;
+
+   wire       regs_en1;
+   wire [2:0] regs_no1;
+   wire [7:0] regs_out1;
+
+   reg        regs_wr;
+   reg [2:0]  regs_no;
+   reg [7:0]  regs_in;
+
+   regs registers(.clk(clk),
+                  .en0(regs_en0), .num0(regs_no0), .out0(regs_out0),
+                  .en1(regs_en1), .num1(regs_no1), .out1(regs_out1),
+                  .wr(regs_wr), .num(regs_no), .in(regs_in));
+
+
+   wire [2:0] areg_no;
+   wire [7:0] areg;
+   wire [2:0] breg_no;
+   wire [7:0] breg;
+   wire [3:0] opcode;
+   wire [7:0] immediate;
+   wire       zero_i;
+   wire       zero_in;
+   wire       zero_out;
+
+   stage1 st1(.clk(clk),
+              .reset(reset),
+              //
+              .ir_reg(ir_reg),
+              //
+              .areg_no(areg_no),
+              .areg(areg),
+              .breg_no(breg_no),
+              .breg(breg),
+              .opcode(opcode),
+              .immediate(immediate),
+              // register bak
+              .regs_en0(regs_en0),
+              .regs_no0(regs_no0),
+              .regs_out0(regs_out0),
+              .regs_en1(regs_en1),
+              .regs_no1(regs_no1),
+              .regs_out1(regs_out1),
+              // memory address register
+              .addr_i(addr_i),
+              .addr_in(addr_in),
+              .addr_reg(addr_reg),
+              // not here
+              .zero_i(zero_i),
+              .zero_in(zero_in),
+              .zero_out(zero_out),
+              .pc_i(pc_i),
+              .pc_in(pc_in),
+              .pc_e(pc_e)
+              );
+
+   // ========= STAGE 2 ========
+
+   // - If ALU, then do the ALU and store to register file.
+   // - If store operation, then reg => mem.
+   // - If load operation, then mem => reg.
+
+   // The ALU unit
+   wire       sub;
+   wire [7:0] alu_y;
+   reg [7:0]  alu_a;
+   reg [7:0]  alu_b;
+   reg [7:0]  alu_c;
+
+   alu alu(.a(alu_a), .b(alu_b), .c(alu_c),
+           .out(alu_y), .sub(sub),
+           .zero(zero_in), .carry());
+
+   reg [7:0]  alu_out;
+   always @(posedge clk)
+     alu_out <= alu_y;
+
+   reg [2:0]  alu_out_no;
+   always @(posedge clk)
+     alu_out_no <= areg_no;
+
+   always @*
+     begin
+        alu_a <= 0;
+        alu_b <= 0;
+        alu_c <= 0;
+        if (opcode == `MVI) begin
+           alu_a <= areg_no == alu_out_no ? alu_y : areg;
+           alu_b <= 0;
+           alu_c <= immediate;
+        end else if (opcode == `ADI) begin
+           alu_a <= areg_no == alu_out_no ? alu_y : areg;
+           alu_b <= breg_no == alu_out_no ? alu_y : breg;
+           alu_c <= immediate;
+        end
+     end
+
+   assign zero_i = 1'b0;
+   assign sub = 1'b0;
+
+   always @(*)
+     begin
+        mem_i <= 1'b0;
+        mem_in <= 0;
+
+        regs_wr <= 1'b0;
+        regs_no <= 0;
+        regs_in <= 0;
+
+        if (opcode == `ADI || opcode == `MVI) begin
+           regs_wr <= 1'b1;
+           regs_no <= areg_no;
+           regs_in <= alu_y;
+        end else begin
+           regs_wr <= 1'b0;
+           regs_no <= 0;
+           regs_in <= 0;
+        end
+     end // always @ (*)
+
+   always @(posedge clk)
+     if (opcode == `OUT) begin
+        out <= mem_reg;
+     end
+
 endmodule
 
 `ifndef TEST
@@ -277,13 +428,13 @@ module top(input wire 	     sys_clk_i,
 	   output wire [3:0] led,
            output wire [3:0] led_g);
 
-   wire                    clk0_unused, clk1_unused, clk2_unused, clk3_unused, clk4_unused;
-   wire                    clk_feedback, clk_locked;
+   wire                      clk0_unused, clk1_unused, clk2_unused, clk3_unused, clk4_unused;
+   wire                      clk_feedback, clk_locked;
 
-   wire                    sys_clk;
-   wire                    clk_feedback_buffered;
+   wire                      sys_clk;
+   wire                      clk_feedback_buffered;
 
-   wire                    clk;
+   wire                      clk;
 
    PLLE2_BASE #(.BANDWIDTH("OPTIMIZED"),
                 .CLKFBOUT_MULT(12), // Multiply value for all outputs (2-64)
@@ -328,17 +479,17 @@ module top(input wire 	     sys_clk_i,
    BUFH feedback_buffer(.I(clk_feedback), .O(clk_feedback_buffered));
    IBUF sysclk_buffer(.I(sys_clk_i), .O(sys_clk));
 
-   reg [16:0]              low_speed_ctr = 0;
+   reg [16:0]                low_speed_ctr = 0;
    always @(posedge clk)
      low_speed_ctr <= low_speed_ctr + 1;
 
-   wire [7:0]              out;
+   wire [7:0]                out;
 
    sap sap(.clk(low_speed_ctr[16]), .reset(1'b0), .out(out));
 
    assign led[3:0] = out[7:4];
 
-   reg [7:0]               ctr = 0;
+   reg [7:0]                 ctr = 0;
    always @(posedge clk)
      ctr <= ctr + 1;
 
@@ -359,7 +510,7 @@ module tb();
    initial begin
       clk = 1'b1;
       reset = 1'b1;
-      #10 reset = 1'b0;
+      #2 reset = 1'b0;
    end
 
    initial begin
@@ -372,18 +523,30 @@ module tb();
    end
 
    initial begin
-      `ifdef DETAILED
-      $display("     PC  S  IR MAR MEM   A   B   O");
-      $monitor("%3d) %2h %2h  %h  %2h  %2h  %h  %h  %h  (%h)", $time,
-               DUT.pc.out, DUT.ctrl.state,
-               DUT.ireg.out, DUT.mar.out, DUT.mem_reg,
-               DUT.areg.out, DUT.breg.out, out, DUT.bus);
-      `else
-      //$display("       A   B   O");
-      //$monitor("%04d) %h  %h  %h ", $time, DUT.areg.out, DUT.breg.out, out);
-      $monitor("%h", out);
-      `endif
+ `ifdef DETAILED
+      $display("     PC   IR | OP A# B# Im | A   B   O");
+
+ `else
+      $display("       A   B   O");
+      $monitor("%04d) %h  %h  %h ", $time, DUT.areg, DUT.breg, out);
+      //$monitor("%h", out);
+ `endif
       #1500 $finish;
-   end
+   end // initial begin
+
+   always @(posedge clk)
+      $strobe("%3d) %2h %4h |  %h %2h %2h %2h | %2h %2h %2h %2h | %2h (%d) %2h (%d)  %h",
+               $time, DUT.pc_reg, DUT.ir_reg,
+               DUT.st1.opcode, DUT.st1.dst, DUT.st1.src, DUT.st1.immediate,
+               DUT.registers.regs[0],
+               DUT.registers.regs[1],
+               DUT.registers.regs[2],
+               DUT.registers.regs[3],
+               DUT.areg, DUT.areg_no,
+               DUT.breg, DUT.breg_no,
+               out);
+
+
 endmodule // tb
+
 `endif

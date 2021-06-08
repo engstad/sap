@@ -1,0 +1,2 @@
+#! /bin/sh
+cd asm && cargo run > ../rom.txt

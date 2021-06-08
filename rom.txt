@@ -1,15 +1,20 @@
-@0
-1E  // 0: LDA A
-9F  // 1: LDB B
-4F  // 2: STA B
-20  // 3: ADD
-4E  // 4: STA A
-EE  // 5: OUT A
-9D  // 6: LDB D
-30  // 7: SUB
-D0  // 8: JNZ 0
-FF  // 9: HLT
-@D
-E9
-00
-01
+00 59
+01 5a
+10 91
+02 fe
+a0 90
+01 fe
+10 91
+02 fe
+a0 90
+01 fe
+10 91
+02 fe
+a0 90
+01 fe
+10 91
+02 fe
+a0 90
+01 fe
+00 f0
+00 ff

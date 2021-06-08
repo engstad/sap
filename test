@@ -1,4 +1,5 @@
 #!/bin/sh
-# iverilog -g2005 -DTEST -DDETAILED -Wall sap.v
-iverilog -g2005 -DTEST -Wall sap.v -o build/sap
-vvp build/sap
+rm ./a.out ./sap
+iverilog -g2005-sv -DTEST -DDETAILED -Wall -o sap sap.v
+#iverilog -g2005-sv -DTEST -Wall -o sap sap.v
+./sap
