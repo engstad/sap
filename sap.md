@@ -50,7 +50,7 @@ We can clearly not fit in 8 bits per instruction, so how about 16?
 
 ## REG + IMM8
 
-* ADD/SUB opc5, dst3, imm8     [01000, 01001] // 4
+* INC/DEC opc5, dst3, imm8     [01000, 01001] // 4
 * CMP/MOV opc5, dst3, imm8     [01010, 01011] // 5
 * LSP/SSP opc5, dst3, imm8     [01100, 01101] // 6
 * ASP/APC opc5, dst3, imm8     [01110, 01111] // 7
