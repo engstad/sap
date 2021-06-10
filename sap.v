@@ -269,16 +269,8 @@ module stage1(input wire        clk,
         imm_valid <= 1'b0;
         imm_reg <= 0;
 
-        o_pc_i <= 1'b0;
-        o_pc_e <= 1'b1;
-        o_pc_in <= 8'h00;
-
         if (enable)
-          if (ir_reg[15:11] == 5'b00001) begin
-             o_pc_i <= 1'b1;
-             o_pc_e <= 1'b0;
-             o_pc_in <= ir_reg[7:0];
-          end else if (ir_reg[15:14] == 2'b01) begin
+          if (ir_reg[15:14] == 2'b01) begin
              dest_valid <= 1'b1;
              dest_no <= ir_reg[10:8];
              src0_valid <= 1'b1;
@@ -323,7 +315,6 @@ module stage1(input wire        clk,
                4'h1: opc_reg <= `SUBR;
                default: opc_reg <= `HALT;
              endcase // case (ir_reg[12:9])
-             o_pc_e <= opc_reg != `HALT;
              dest_valid <= 1'b1;
              src0_valid <= 1'b1;
              src1_valid <= 1'b1;
@@ -609,6 +600,7 @@ module sap(input wire       clk,
    stage2 st2(.clk(clk), .reset(reset), .enable(enable_2),
               .dest_valid(dest_valid), .dest_no(dest_no),
               .src0_valid(src0_valid), .src0_no(src0_no), .src0_reg(src0_reg),
+              .src1_valid(src1_valid), .src1_no(src1_no), .src1_reg(src1_reg),
               .imm_valid(imm_valid), .imm_reg(imm_reg), .opc_reg(opcode),
               .regs_wr(regs_wr), .regs_no(regs_no), .regs_in(regs_in),
               .out_reg(out_reg));
