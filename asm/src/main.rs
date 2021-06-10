@@ -18,27 +18,27 @@ use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Class {
-    Br11,
-    Br8,
-    R8,
-    R8X,
-    RR4,
-    LS2,
-    CALC,
-    SPEC,
+    Branch11,
+    CBranch8,
+    RegImm8N,
+    RegImm8X,
+    Reg2Imm4,
+    LdStImm2,
+    Reg3Imm0,
+    Special0,
 }
 
 fn cls_info(cls: Class) -> (u8, u8, u8, u8, u8) {
     match cls {
-        //            Rs  Code    CZ OZ IZ
-        Class::Br11 => (0, 0b00001, 5, 0, 11),
-        Class::Br8 => (0, 0b001__, 3, 5, 8),
-        Class::R8 => (1, 0b01___, 2, 3, 8),
-        Class::R8X => (1, 0b00010, 5, 0, 8),
-        Class::RR4 => (2, 0b100__, 3, 3, 4),
-        Class::LS2 => (3, 0b1011_, 4, 2, 2),
-        Class::CALC => (3, 0b110__, 3, 4, 0), // 3 + 4 + 3*3 = 16
-        Class::SPEC => (2, 0b1111_, 4, 4, 8),
+        //                 Rs  Code     CZ OZ IZ
+        Class::Branch11 => (0, 0b00001, 5, 0, 11),
+        Class::CBranch8 => (0, 0b001__, 3, 5, 8),
+        Class::RegImm8N => (1, 0b01___, 2, 3, 8),
+        Class::RegImm8X => (1, 0b00010, 5, 0, 8),
+        Class::Reg2Imm4 => (2, 0b100__, 3, 3, 4),
+        Class::LdStImm2 => (3, 0b1011_, 4, 2, 2),
+        Class::Reg3Imm0 => (3, 0b110__, 3, 4, 0),
+        Class::Special0 => (2, 0b1111_, 4, 4, 8),
     }
 }
 
@@ -62,7 +62,7 @@ pub enum Opc {
     AND,
     XOR,
     TST,
-    OR,
+    ORR,
     BIC,
     MVN,
     ADD,
@@ -80,45 +80,45 @@ pub enum Opc {
 
 fn info(opc: Opc) -> (Class, u8) {
     match opc {
-        Opc::BRA => (Class::Br11, 0b0),
+        Opc::BRA => (Class::Branch11, 0b0),
         //
-        Opc::INCI => (Class::R8, 0b000),
-        Opc::DECI => (Class::R8, 0b001),
+        Opc::INCI => (Class::RegImm8N, 0b000),
+        Opc::DECI => (Class::RegImm8N, 0b001),
         // CMPI
-        Opc::MOVI => (Class::R8, 0b011),
-        Opc::LDRI => (Class::R8X, 0),
+        Opc::MOVI => (Class::RegImm8N, 0b011),
+        Opc::LDRI => (Class::RegImm8X, 0),
         // LSP
         // SSP
         // ISP
         // DSP
-        Opc::SHLI => (Class::RR4, 0b000),
-        Opc::LSRI => (Class::RR4, 0b001),
-        Opc::ASRI => (Class::RR4, 0b010),
-        Opc::RORI => (Class::RR4, 0b011),
-        Opc::ADDI => (Class::RR4, 0b100),
+        Opc::SHLI => (Class::Reg2Imm4, 0b000),
+        Opc::LSRI => (Class::Reg2Imm4, 0b001),
+        Opc::ASRI => (Class::Reg2Imm4, 0b010),
+        Opc::RORI => (Class::Reg2Imm4, 0b011),
+        Opc::ADDI => (Class::Reg2Imm4, 0b100),
         // ?
-        Opc::SUBI => (Class::RR4, 0b110),
+        Opc::SUBI => (Class::Reg2Imm4, 0b110),
         //
-        Opc::SHL => (Class::CALC, 0x0),
-        Opc::LSR => (Class::CALC, 0x1),
-        Opc::ASR => (Class::CALC, 0x2),
-        Opc::ROR => (Class::CALC, 0x3),
-        Opc::AND => (Class::CALC, 0x4),
-        Opc::XOR => (Class::CALC, 0x5),
-        Opc::TST => (Class::CALC, 0x6),
-        Opc::OR => (Class::CALC, 0x7),
-        Opc::BIC => (Class::CALC, 0x8),
-        Opc::MVN => (Class::CALC, 0x9),
-        Opc::ADD => (Class::CALC, 0xA),
-        Opc::SUB => (Class::CALC, 0xB),
-        Opc::CMN => (Class::CALC, 0xC),
-        Opc::CMP => (Class::CALC, 0xD),
-        Opc::MUL => (Class::CALC, 0xE),
-        Opc::RSB => (Class::CALC, 0xF),
+        Opc::SHL => (Class::Reg3Imm0, 0x0),
+        Opc::LSR => (Class::Reg3Imm0, 0x1),
+        Opc::ASR => (Class::Reg3Imm0, 0x2),
+        Opc::ROR => (Class::Reg3Imm0, 0x3),
+        Opc::AND => (Class::Reg3Imm0, 0x4),
+        Opc::XOR => (Class::Reg3Imm0, 0x5),
+        Opc::TST => (Class::Reg3Imm0, 0x6),
+        Opc::ORR => (Class::Reg3Imm0, 0x7),
+        Opc::BIC => (Class::Reg3Imm0, 0x8),
+        Opc::MVN => (Class::Reg3Imm0, 0x9),
+        Opc::ADD => (Class::Reg3Imm0, 0xA),
+        Opc::SUB => (Class::Reg3Imm0, 0xB),
+        Opc::CMN => (Class::Reg3Imm0, 0xC),
+        Opc::CMP => (Class::Reg3Imm0, 0xD),
+        Opc::MUL => (Class::Reg3Imm0, 0xE),
+        Opc::RSB => (Class::Reg3Imm0, 0xF),
         //
-        Opc::NOP => (Class::SPEC, 0b0000),
-        Opc::HALT => (Class::SPEC, 0b1111),
-        Opc::OUT => (Class::SPEC, 0b1110),
+        Opc::NOP => (Class::Special0, 0b0000),
+        Opc::HALT => (Class::Special0, 0b1111),
+        Opc::OUT => (Class::Special0, 0b1110),
     }
 }
 
@@ -199,14 +199,15 @@ fn parse_opc<'a>(i: &'a str) -> IResult<&'a str, Opc, VerboseError<&'a str>> {
             map(tag("and"), |_| Opc::AND),
             map(tag("xor"), |_| Opc::XOR),
             map(tag("tst"), |_| Opc::TST),
-            map(tag("or"), |_| Opc::OR),
+            map(tag("or"), |_| Opc::ORR),
+            map(tag("orr"), |_| Opc::ORR),
             map(tag("bic"), |_| Opc::BIC),
             map(tag("mvn"), |_| Opc::MVN),
             map(tag("add"), |_| Opc::ADD),
             map(tag("sub"), |_| Opc::SUB),
             map(tag("cmn"), |_| Opc::CMN),
             map(tag("cmp"), |_| Opc::CMP),
-            map(tag("mukl"), |_| Opc::MUL),
+            map(tag("mul"), |_| Opc::MUL),
             map(tag("rsb"), |_| Opc::RSB),
         )),
         //
@@ -249,7 +250,9 @@ fn parse_stmt(input: &str) -> Res<&str, Stmt> {
 fn parse_program(input: &str) -> Res<&str, Vec<Stmt>> {
     context(
         "program",
-        many0(map(tuple((multispace0, parse_stmt)), |(_, s)| s)),
+        map(tuple((many0(map(tuple((multispace0, parse_stmt)), |(_, s)| s)),
+                   multispace0)),
+            |(r,_)| r)
     )(input)
 }
 
@@ -294,21 +297,22 @@ fn encode_stmt(
             let mut res =
                 (cls_code as u16) << (16 - code_sz) | (opc as u16) << (16 - code_sz - opc_sz);
 
-            if cls == Class::Br11 {
+            if cls == Class::Branch11 {
                 if opers.len() != 1 {
                     return Err("Too many operands to BRA".into());
                 }
                 if let Oper::Str(s) = &opers[0] {
                     if let Some(dst) = labels.get(s) {
-                        res |= dst; // :TODO: Relative
-                        return Ok(Some(res));
+                        return Ok(Some(res | dst)); // :TODO: Relative
                     } else {
                         return Err(format!("Couldn't find label {}", s));
                     }
+                } else if let Oper::Num(n) = &opers[0] {
+                    return Ok(Some(res | *n as u16));
                 } else {
                     return Err("Invalid operand to BRA".into());
                 }
-            } else if cls != Class::SPEC {
+            } else if cls != Class::Special0 {
                 assert!(regs + if imm_sz > 0 { 1 } else { 0 } == opers.len() as u8);
 
                 let mut pos = 3 * regs + imm_sz;
@@ -363,6 +367,9 @@ fn encode_program(prog: &[Stmt]) -> Result<Vec<u16>, String> {
     for stmt in prog.iter() {
         let r = encode_stmt(stmt, pc, &labels)?;
         if let Some(r) = r {
+            if DEBUG {
+                println!("{:04x}", r);
+            }
             res.push(r);
         }
     }
@@ -400,23 +407,31 @@ end:
             Ok(vec![
                 0b100_100_001_010_0011,
                 0b1111_0000__0000_0000,
-                0b00000__000_0000_0010,
+                0b00001__000_0000_0010,
             ])
         );
     }
+
+    assert!(false);
 }
 
 fn main() {
     let prog_src = include_str!("alu.asm");
     let prog_stmts = parse_program(prog_src);
     let prog_encoding = match prog_stmts {
-        Ok(stmts) => match encode_program(&stmts.1) {
-            Ok(e) => e,
-            Err(e) => {
-                println!("Error: {}", e);
+        Ok(stmts) => {
+            if stmts.0.len() > 0 {
+                println!("Not parsed: `{}`", stmts.0);
                 return;
             }
-        },
+            match encode_program(&stmts.1) {
+                Ok(e) => e,
+                Err(e) => {
+                    println!("Error: {}", e);
+                    return;
+                }
+            }
+        }
         Err(e) => {
             println!("could not encode: {}", e);
             return;
@@ -426,10 +441,10 @@ fn main() {
     for i in 0..256 / 2 {
         if i < prog_encoding.len() {
             let p1 = prog_encoding[i];
-            print!("{:02x} {:02x}", p1 & 0xFF, (p1 >> 8));
-            println!();
+            print!("{:02x} {:02x} ", p1 & 0xFF, (p1 >> 8));
         } else {
-            println!("FF FF");
+            print!("FF FF ");
         }
+        if i % 7 == 7 - 1 { println!(); }
     }
 }

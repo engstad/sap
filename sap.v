@@ -17,27 +17,8 @@ module counter8(input            clk,
    end // @(posedge clk)
 endmodule
 
-module reg1(input load, input clk, input reset, input in, output reg out);
-   always @(posedge clk)
-     if (reset)
-       out <= 1'b1;
-     else if (load)
-       out <= in;
-endmodule // reg
-
-// A 4-bit register
-module reg4(input load, input clk, input reset, input[3:0] in,
-            output reg [3:0] out);
-   always @(posedge clk)
-     if (reset) begin
-        out <= 4'b0;
-     end else if (load) begin
-        out <= in;
-     end
-endmodule
-
 // A 8-bit register
-module reg8(input load, input clk, input reset, input[3:0] in,
+module reg8(input load, input clk, input reset, input[8-1:0] in,
             output reg [8-1:0] out);
    always @(posedge clk)
      if (reset) begin
@@ -108,19 +89,6 @@ module regs(input clk,
        regs[num] <= in;
 
 endmodule // regs
-
-module adder(input[7:0] a, input[7:0] b, output [7:0] out, input sub, output zero, output carry);
-   assign {carry, out} = sub ? a - b : a + b;
-   assign zero = out == 0;
-endmodule // adder
-
-module shifter(input [7:0] a, input[2:0] sh, output [7:0] out, input[1:0] op);
-   assign out = (op == 0) ? (a << sh) :
-                (op == 1) ? (a >> sh) :
-                (op == 2) ? ($signed(a) >>> sh) :
-                ((a >> sh) | (a << (8 - sh)));
-endmodule // shifter
-
 
 `define OP_SHL 4'h0
 `define OP_LSR 4'h1
@@ -241,6 +209,9 @@ module stage1(input wire        clk,
    reg                          imm_valid;
    reg [7:0]                    imm_reg;
 
+   reg [10:0]                   jmp_reg;
+   reg                          jmp_valid;
+
    always @(*)
      begin
         dest_valid <= 1'b0;
@@ -259,8 +230,16 @@ module stage1(input wire        clk,
         alu_reg <= `OP_SHL;
         alu_valid <= 1'b0;
 
+        jmp_valid <= 1'b0;
+
         if (enable)
-          if (ir_reg[15:14] == 2'b01) begin
+          if (ir_reg[15:11] == 5'b00001)
+            begin
+               jmp_valid <= 1'b1;
+               jmp_reg <= ir_reg[10:0];
+            end
+          else if (ir_reg[15:14] == 2'b01)
+            begin
              dest_valid <= 1'b1;
              dest_no <= ir_reg[10:8];
              src0_valid <= 1'b1;
@@ -280,7 +259,8 @@ module stage1(input wire        clk,
 
              imm_valid <= 1'b1;
              imm_reg <= ir_reg[7:0];
-          end else if (ir_reg[15:13] == 5'b100) begin
+            end
+          else if (ir_reg[15:13] == 5'b100) begin
              // RR4 class
              opc_reg <= `C_ALU;
              alu_valid <= 1'b1;
@@ -380,8 +360,8 @@ module stage1(input wire        clk,
        o_alu_valid <= alu_valid;
 
    // Jumps
-   assign pc_i = 1'b0;
-   assign pc_in = pc_i ? imm_reg : 0;
+   assign pc_i = jmp_valid;
+   assign pc_in = pc_i ? jmp_reg : 0;
    assign pc_e = !pc_i && (opc_reg != `C_HALT);
 
 endmodule // stage1
@@ -663,10 +643,18 @@ module top(input wire 	     sys_clk_i,
    always @(posedge clk)
      low_speed_ctr <= low_speed_ctr + 1;
 
+   // Bit 0: 1/2 = 1/2^1 speed
+   // Bit 1: 1/4 = 1/2^2 speed
+   // Bit N:       1/2^(N+1) speed
+   //
+   // So e.g.: 18 = 12 MHz / 2^19 = 22.8 Hz = 22.8 cycles/second
+   //          20 = 12 MHz / 2^21 =  2.9 Hz =  2.9 cycles/second
+   //          23 = 12 MHz / 2^24 =  0.7 Hz
+
    wire                      slow_clk;
    wire [7:0]                out;
 
-   assign slow_clk = low_speed_ctr[20];
+   assign slow_clk = low_speed_ctr[17];
 
    sap sap(.clk(slow_clk), .reset(1'b0), .enable(1'b1), .out_reg(out));
 
@@ -708,7 +696,7 @@ module tb();
  `ifdef DETAILED
    initial begin
       $display("     PC   IR | IRp  OP D    S    Im   | OP  # D  # S     Im    W # WR ");
-      #100 $finish;
+      #200 $finish;
    end
 
    always @(posedge clk) begin

@@ -1,4 +1,4 @@
-        movi r1, 5
+start:  movi r1, 5
         out  r1
         inci r1, 10
         out  r1
@@ -37,5 +37,5 @@
         mul  r0, r1, r2
         out  r0
         rsb  r0, r1, r2
+        bra  start
         out  r0
-        halt
