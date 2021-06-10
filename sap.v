@@ -36,21 +36,17 @@ module reg4(input load, input clk, input reset, input[3:0] in,
      end
 endmodule
 
-// An 8-bit register (implemented w/2 4-bit registers)
-module reg8(input             clk,
-            input             reset,
-            input             load,
-            input [7:0]       in,
-            output wire [7:0] out);
-   wire [3:0]                 lo_out, hi_out;
-   wire [3:0]                 lo_in = in[3:0];
-   wire [3:0]                 hi_in = in[7:4];
-   reg4 lo(.load(load), .clk(clk), .reset(reset),
-           .in(lo_in), .out(lo_out));
-   reg4 hi(.load(load), .clk(clk), .reset(reset),
-           .in(hi_in), .out(hi_out));
-   assign out = {hi_out, lo_out};
+// A 8-bit register
+module reg8(input load, input clk, input reset, input[3:0] in,
+            output reg [8-1:0] out);
+   always @(posedge clk)
+     if (reset) begin
+        out <= 8'b0;
+     end else if (load) begin
+        out <= in;
+     end
 endmodule
+
 
 //
 // Hopefully synthesize as distributed RAM
@@ -138,8 +134,8 @@ endmodule // shifter
 `define OP_BIC 4'h8   // D <- R & ~I
 `define OP_MVN 4'h9   // D <- ~S
 
-`define OP_ADC 4'hA   // Add w/carry
-`define OP_SBC 4'hB   // Sub w/carry
+`define OP_ADD 4'hA   // Add w/carry
+`define OP_SUB 4'hB   // Sub w/carry
 `define OP_CMN 4'hC   // A + B => cond
 `define OP_CMP 4'hD   // A - B => cond
 `define OP_MUL 4'hE   // D <- A * B
@@ -160,8 +156,8 @@ module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, 
                     (op == `OP_OR ) ? (a | b) :
                     (op == `OP_BIC) ? (a & ~b) :
                     (op == `OP_MVN) ? (~a) :
-                    (op == `OP_ADC) ? (a + b + ci) :
-                    (op == `OP_SBC) ? (a + !b + ci) :
+                    (op == `OP_ADD) ? (a + b + ci) :
+                    (op == `OP_SUB) ? (a + !b + ci) :
                     (op == `OP_CMN) ? (a + b) :
                     (op == `OP_CMP) ? (a - b) :
                     (op == `OP_MUL) ? (a * b) :
@@ -170,22 +166,11 @@ module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, 
    assign z = (y == 0);
 endmodule
 
-`define INCI  4'h0
-`define DECI  4'h1
-`define MOVI  4'h2
-`define LDRI  4'h3
-`define SHLI  4'h4
-`define LSRI  4'h5
-`define ASRI  4'h6
-`define RORI  4'h7
-`define ADDI  4'h8  /* ADDI dst, src, val : dst = src + val */
-`define SUBI  4'h9  /* SUBI dst, src, val : dst = src - val */
-`define ADDR  4'hA
-`define BRA   4'hB
-`define SUBR  4'hC
-`define OUT   4'hD
-`define HALT  4'hE
-`define NOP   4'hF
+`define C_NOP  4'h0
+`define C_ALU  4'h1
+`define C_BRA  4'h2
+`define C_OUT  4'h3
+`define C_HALT 4'h4
 
 module stage1(input wire        clk,
               input wire        reset,
@@ -208,6 +193,9 @@ module stage1(input wire        clk,
               output reg [7:0]  o_src1_reg,
 
               output reg [3:0]  o_opc_reg,
+              output reg [3:0]  o_alu_reg,
+              output reg        o_alu_valid,
+
               output reg        o_imm_valid,
               output reg [7:0]  o_imm_reg,
 
@@ -249,14 +237,14 @@ module stage1(input wire        clk,
    reg [2:0]                    src1_no;
 
    reg [3:0]                    opc_reg;
+   reg [3:0]                    alu_reg;
+   reg                          alu_valid;
 
    reg                          imm_valid;
    reg [7:0]                    imm_reg;
 
    always @(*)
      begin
-        opc_reg <= `HALT;
-
         dest_valid <= 1'b0;
         dest_no <= 0;
 
@@ -269,6 +257,10 @@ module stage1(input wire        clk,
         imm_valid <= 1'b0;
         imm_reg <= 0;
 
+        opc_reg <= `C_HALT;
+        alu_reg <= `OP_SHL;
+        alu_valid <= 1'b0;
+
         if (enable)
           if (ir_reg[15:14] == 2'b01) begin
              dest_valid <= 1'b1;
@@ -276,12 +268,15 @@ module stage1(input wire        clk,
              src0_valid <= 1'b1;
              src0_no <= ir_reg[10:8];
 
+             opc_reg <= `C_ALU;
+             alu_valid <= 1'b1;
+
              if (ir_reg[13:11] == 3'b000)
-               opc_reg <= `INCI;
+               alu_reg <= `OP_ADD;
              else if (ir_reg[13:11] == 3'b001)
-               opc_reg <= `DECI;
+               alu_reg <= `OP_SUB;
              else if (ir_reg[13:11] == 3'b011) begin
-                opc_reg <= `MOVI;
+                alu_reg <= `OP_ADD;
                 src0_valid <= 1'b0;
              end
 
@@ -289,18 +284,25 @@ module stage1(input wire        clk,
              imm_reg <= ir_reg[7:0];
           end else if (ir_reg[15:13] == 5'b100) begin
              // RR4 class
+             opc_reg <= `C_ALU;
+             alu_valid <= 1'b1;
+
              if (ir_reg[12:10] == 3'b000)
-               opc_reg <= `SHLI;
+               alu_reg <= `OP_SHL;
              else if (ir_reg[12:10] == 3'b001)
-               opc_reg <= `LSRI;
+               alu_reg <= `OP_LSR;
              else if (ir_reg[12:10] == 3'b010)
-               opc_reg <= `ASRI;
+               alu_reg <= `OP_ASR;
              else if (ir_reg[12:10] == 3'b011)
-               opc_reg <= `RORI;
+               alu_reg <= `OP_ROR;
              else if (ir_reg[12:10] == 3'b100)
-               opc_reg <= `ADDI;
+               alu_reg <= `OP_ADD;
              else if (ir_reg[12:10] == 3'b110)
-               opc_reg <= `SUBI;
+               alu_reg <= `OP_SUB;
+             else begin
+                opc_reg <= `C_HALT;
+                alu_valid <= 1'b0;
+             end
 
              dest_valid <= 1'b1;
              dest_no <= ir_reg[9:7];
@@ -310,10 +312,16 @@ module stage1(input wire        clk,
              imm_reg <= {4'b0000, ir_reg[3:0]};
           end else if (ir_reg[15:13] == 3'b110) begin
              // CALC (RRR) class
+             alu_reg <= `OP_ADD;
+             alu_valid <= 1'b1;
+
              case (ir_reg[12:9])
-               4'h0: opc_reg <= `ADDR;
-               4'h1: opc_reg <= `SUBR;
-               default: opc_reg <= `HALT;
+               4'h0: alu_reg <= `OP_ADD;
+               4'h1: alu_reg <= `OP_SUB;
+               default: begin
+                  alu_valid <= 1'b0;
+                  opc_reg <= `C_HALT;
+               end
              endcase // case (ir_reg[12:9])
              dest_valid <= 1'b1;
              src0_valid <= 1'b1;
@@ -323,11 +331,11 @@ module stage1(input wire        clk,
              src1_no <= ir_reg[2:0];
           end else if (ir_reg[15:13] == 3'b111) begin
              if (ir_reg[11:8] == 4'b1110) begin
-                opc_reg <= `OUT;
+                opc_reg <= `C_OUT;
                 src0_valid <= 1'b1;
                 src0_no <= ir_reg[2:0];
              end else if (ir_reg[11:8] == 4'b0000) begin
-                opc_reg <= `NOP;
+                opc_reg <= `C_NOP;
              end
           end
      end // always @ *
@@ -374,10 +382,18 @@ module stage1(input wire        clk,
      if (enable)
        o_opc_reg <= opc_reg;
 
+   always @(posedge clk)
+     if (enable)
+       o_alu_reg <= alu_reg;
+
+   always @(posedge clk)
+     if (enable)
+       o_alu_valid <= alu_valid;
+
    // Jumps
    assign pc_i = 1'b0;
    assign pc_in = pc_i ? imm_reg : 0;
-   assign pc_e = !pc_i && (opc_reg != `HALT);
+   assign pc_e = !pc_i && (opc_reg != `C_HALT);
 
 endmodule // stage1
 
@@ -392,6 +408,7 @@ module stage2(clk, reset, enable,
               src0_valid, src0_no, src0_reg,
               src1_valid, src1_no, src1_reg,
               imm_valid, imm_reg, opc_reg,
+              alu_op, alu_valid,
               regs_wr, regs_no, regs_in,
               out_reg);
 
@@ -410,6 +427,8 @@ module stage2(clk, reset, enable,
    input wire        imm_valid;
    input wire [7:0]  imm_reg;
    input wire [3:0]  opc_reg;
+   input wire [3:0]  alu_op;
+   input wire        alu_valid;
 
    output wire       regs_wr; // Write enable
    output wire [2:0] regs_no; // Register number
@@ -435,44 +454,19 @@ module stage2(clk, reset, enable,
    wire [7:0]        src0_reg_in;
    wire [7:0]        src1_reg_in;
 
-   wire              sub_op;
-   wire [1:0]        shift_op;
-
-   adder adder(.a(alu_a), .b(alu_b),
-               .out(alu_y), .sub(sub_op),
-               .zero(), .carry());
-
-   shifter shft(.a(alu_a), .sh(alu_b[2:0]), .out(alu_s), .op(shift_op));
+   alu alu(.a(alu_a), .b(alu_b), .y(alu_y),
+           .op(alu_op), .z(), .ci(1'b0), .co());
 
    assign src0_reg_in = (cache_valid && src0_no == cache_no) ? cache_reg : src0_reg;
    assign src1_reg_in = (cache_valid && src1_no == cache_no) ? cache_reg : src1_reg;
 
-   wire              is_alu_op;
-   wire              is_shift_op;
+   assign alu_a = alu_valid && src0_valid ? src0_reg_in : 8'h00;
+   assign alu_b = alu_valid ? (src1_valid ? src1_reg_in :
+                               imm_valid ? imm_reg : 8'h00) : 8'h00;
 
-   assign is_alu_op = (opc_reg == `INCI) || (opc_reg == `DECI) ||
-                      (opc_reg == `ADDI) || (opc_reg == `SUBI) ||
-                      (opc_reg == `ADDR) || (opc_reg == `SUBR);
-
-   assign is_shift_op = (opc_reg == `SHLI) || (opc_reg == `ASRI) ||
-                        (opc_reg == `LSRI) || (opc_reg == `RORI);
-
-   assign shift_op = (opc_reg == `SHLI) ? 2'b00 :
-                     (opc_reg == `LSRI) ? 2'b01 :
-                     (opc_reg == `ASRI) ? 2'b10 :
-                     (opc_reg == `RORI) ? 2'b11 : 2'b00;
-
-   assign sub_op = (opc_reg == `DECI) || (opc_reg == `SUBI) || (opc_reg == `SUBR);
-
-   assign alu_a = (is_alu_op || is_shift_op) && src0_valid ? src0_reg_in : 8'h00;
-   assign alu_b = (is_alu_op || is_shift_op) && src1_valid ? src1_reg_in :
-                  (is_alu_op || is_shift_op) && imm_valid ? imm_reg : 8'h00;
-
-   assign regs_wr = is_alu_op || is_shift_op || opc_reg == `MOVI;
+   assign regs_wr = alu_valid;
    assign regs_no = dest_valid ? dest_no : src0_no;
-   assign regs_in = is_alu_op ? alu_y :
-                    is_shift_op ? alu_s :
-                    opc_reg == `MOVI ? imm_reg : 8'h00;
+   assign regs_in = alu_valid ? alu_y : imm_valid ? imm_reg : 8'h00;
 
    always @(posedge clk)
      if (enable)
@@ -483,7 +477,7 @@ module stage2(clk, reset, enable,
        end
 
    always @(posedge clk)
-     if (enable && opc_reg == `OUT)
+     if (enable && opc_reg == `C_OUT)
        out_reg <= src0_reg_in;
 
 endmodule // stage2
@@ -576,6 +570,9 @@ module sap(input wire        clk,
    wire [7:0]  src1_reg;
 
    wire [3:0]  opcode;
+   wire [3:0]  alu_op;
+   wire        alu_valid;
+
    wire        imm_valid;
    wire [7:0]  imm_reg;
    wire        zero_i;
@@ -590,7 +587,7 @@ module sap(input wire        clk,
               .o_dest_valid(dest_valid),              .o_dest_no(dest_no),
               .o_src0_valid(src0_valid),              .o_src0_no(src0_no),              .o_src0_reg(src0_reg),
               .o_src1_valid(src1_valid),              .o_src1_no(src1_no),              .o_src1_reg(src1_reg),
-              .o_opc_reg(opcode),
+              .o_opc_reg(opcode),                     .o_alu_valid(alu_valid),          .o_alu_reg(alu_op),
               .o_imm_valid(imm_valid),                .o_imm_reg(imm_reg),
               // Register bank
               .regs_en0(regs_en0),                    .regs_no0(regs_no0),              .regs_out0(regs_out0),
@@ -608,7 +605,8 @@ module sap(input wire        clk,
               .dest_valid(dest_valid), .dest_no(dest_no),
               .src0_valid(src0_valid), .src0_no(src0_no), .src0_reg(src0_reg),
               .src1_valid(src1_valid), .src1_no(src1_no), .src1_reg(src1_reg),
-              .imm_valid(imm_valid), .imm_reg(imm_reg), .opc_reg(opcode),
+              .imm_valid(imm_valid), .imm_reg(imm_reg),
+              .opc_reg(opcode), .alu_op(alu_op), .alu_valid(alu_valid),
               .regs_wr(regs_wr), .regs_no(regs_no), .regs_in(regs_in),
               .out_reg(out_reg));
 
