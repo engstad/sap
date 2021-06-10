@@ -31,14 +31,14 @@ pub enum Class {
 fn cls_info(cls: Class) -> (u8, u8, u8, u8, u8) {
     match cls {
         //                 Rs  Code     CZ OZ IZ
-        Class::Branch11 => (0, 0b00001, 5, 0, 11),
-        Class::CBranch8 => (0, 0b001__, 3, 5, 8),
-        Class::RegImm8N => (1, 0b01___, 2, 3, 8),
-        Class::RegImm8X => (1, 0b00010, 5, 0, 8),
-        Class::Reg2Imm4 => (2, 0b100__, 3, 3, 4),
-        Class::LdStImm2 => (3, 0b1011_, 4, 2, 2),
-        Class::Reg3Imm0 => (3, 0b110__, 3, 4, 0),
-        Class::Special0 => (2, 0b1111_, 4, 4, 8),
+        Class::Branch11 => (0, 0b00001, 5, 0, 11),  // (1/32) [ 3.1%]  100.0%
+        Class::CBranch8 => (0, 0b001__, 3, 5, 8),   // (1/ 8) [12.5%]    0.0%
+        Class::RegImm8N => (1, 0b01___, 2, 3, 8),   // (1/ 4) [25.0%]   37.5% 3 out of 8 taken
+        Class::RegImm8X => (1, 0b00010, 5, 0, 8),   // (1/32) [ 3.1%]  100.0%
+        Class::Reg2Imm4 => (2, 0b100__, 3, 3, 4),   // (1/ 8) [12.5%]   75.0% 6 out of 8 taken
+        Class::LdStImm2 => (3, 0b1011_, 4, 2, 2),   // (1/16) [ 6.3%]    0.0%
+        Class::Reg3Imm0 => (3, 0b110__, 3, 4, 0),   // (1/ 8) [12.5%]  100.0%
+        Class::Special0 => (2, 0b1111_, 4, 4, 8),   // (1/16) [ 6.3%]   18.8% 3 out of 16 taken
     }
 }
 
@@ -61,14 +61,14 @@ pub enum Opc {
     ROR,
     AND,
     XOR,
-    TST,
+    EQV,
     ORR,
     BIC,
-    MVN,
+    NOR,
+    ADC,
+    SBC,
     ADD,
     SUB,
-    CMN,
-    CMP,
     MUL,
     RSB,
     //
@@ -84,38 +84,40 @@ fn info(opc: Opc) -> (Class, u8) {
         //
         Opc::INCI => (Class::RegImm8N, 0b000),
         Opc::DECI => (Class::RegImm8N, 0b001),
-        // CMPI
+        //
         Opc::MOVI => (Class::RegImm8N, 0b011),
         Opc::LDRI => (Class::RegImm8X, 0),
         // LSP
         // SSP
         // ISP
         // DSP
+        // =====================================
         Opc::SHLI => (Class::Reg2Imm4, 0b000),
         Opc::LSRI => (Class::Reg2Imm4, 0b001),
         Opc::ASRI => (Class::Reg2Imm4, 0b010),
-        Opc::RORI => (Class::Reg2Imm4, 0b011),
+        Opc::RORI => (Class::Reg2Imm4, 0b011),  // questionable
         Opc::ADDI => (Class::Reg2Imm4, 0b100),
-        // ?
+        // free
         Opc::SUBI => (Class::Reg2Imm4, 0b110),
-        //
+        // free
+        // =====================================
         Opc::SHL => (Class::Reg3Imm0, 0x0),
         Opc::LSR => (Class::Reg3Imm0, 0x1),
         Opc::ASR => (Class::Reg3Imm0, 0x2),
         Opc::ROR => (Class::Reg3Imm0, 0x3),
         Opc::AND => (Class::Reg3Imm0, 0x4),
         Opc::XOR => (Class::Reg3Imm0, 0x5),
-        Opc::TST => (Class::Reg3Imm0, 0x6),
+        Opc::EQV => (Class::Reg3Imm0, 0x6),
         Opc::ORR => (Class::Reg3Imm0, 0x7),
         Opc::BIC => (Class::Reg3Imm0, 0x8),
-        Opc::MVN => (Class::Reg3Imm0, 0x9),
-        Opc::ADD => (Class::Reg3Imm0, 0xA),
-        Opc::SUB => (Class::Reg3Imm0, 0xB),
-        Opc::CMN => (Class::Reg3Imm0, 0xC),
-        Opc::CMP => (Class::Reg3Imm0, 0xD),
+        Opc::NOR => (Class::Reg3Imm0, 0x9),
+        Opc::ADC => (Class::Reg3Imm0, 0xA),
+        Opc::SBC => (Class::Reg3Imm0, 0xB),
+        Opc::ADD => (Class::Reg3Imm0, 0xC),
+        Opc::SUB => (Class::Reg3Imm0, 0xD),
         Opc::MUL => (Class::Reg3Imm0, 0xE),
         Opc::RSB => (Class::Reg3Imm0, 0xF),
-        //
+        // =====================================
         Opc::NOP => (Class::Special0, 0b0000),
         Opc::HALT => (Class::Special0, 0b1111),
         Opc::OUT => (Class::Special0, 0b1110),
@@ -198,15 +200,15 @@ fn parse_opc<'a>(i: &'a str) -> IResult<&'a str, Opc, VerboseError<&'a str>> {
             map(tag("ror"), |_| Opc::ROR),
             map(tag("and"), |_| Opc::AND),
             map(tag("xor"), |_| Opc::XOR),
-            map(tag("tst"), |_| Opc::TST),
+            map(tag("eqv"), |_| Opc::EQV),
             map(tag("or"), |_| Opc::ORR),
             map(tag("orr"), |_| Opc::ORR),
             map(tag("bic"), |_| Opc::BIC),
-            map(tag("mvn"), |_| Opc::MVN),
+            map(tag("nor"), |_| Opc::NOR),
+            map(tag("adc"), |_| Opc::ADC),
+            map(tag("sbc"), |_| Opc::SBC),
             map(tag("add"), |_| Opc::ADD),
             map(tag("sub"), |_| Opc::SUB),
-            map(tag("cmn"), |_| Opc::CMN),
-            map(tag("cmp"), |_| Opc::CMP),
             map(tag("mul"), |_| Opc::MUL),
             map(tag("rsb"), |_| Opc::RSB),
         )),

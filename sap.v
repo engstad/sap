@@ -90,22 +90,25 @@ module regs(input clk,
 
 endmodule // regs
 
-`define OP_SHL 4'h0
-`define OP_LSR 4'h1
-`define OP_ASR 4'h2
-`define OP_ROR 4'h3
-`define OP_AND 4'h4
-`define OP_XOR 4'h5
-`define OP_TST 4'h6   // AND w/no results (cond flags)
-`define OP_OR  4'h7
-`define OP_BIC 4'h8   // D <- R & ~I
-`define OP_MVN 4'h9   // D <- ~S
-`define OP_ADC 4'hA   // Add w/carry
-`define OP_SBC 4'hB   // Sub w/carry
-`define OP_ADD 4'hC   // Also CMN: A + B => cond
-`define OP_SUB 4'hD   // Also CMP: A - B => cond
-`define OP_MUL 4'hE   // D <- A * B
-`define OP_RSB 4'hF   // D <- I - A
+`define OP_SHL 4'h0   // Rd = Rm << Rn
+`define OP_LSR 4'h1   // Rd = Rm >> Rn
+`define OP_ASR 4'h2   // Rd = Rm >>> Rn
+`define OP_ROR 4'h3   // Rd = Rm >>^ Rn
+`define OP_AND 4'h4   // Rd = Rm & Rn
+`define OP_XOR 4'h5   // Rd = Rm ^ Rn
+`define OP_EQV 4'h6   // Rd = ~(Rm ^ Rn)
+`define OP_OR  4'h7   // Rd = Rm | Rn
+`define OP_BIC 4'h8   // Rd = Rm & ~Rn
+`define OP_NOR 4'h9   // Rd = ~(Rm | Rn)
+`define OP_ADC 4'hA   // Rd = Rm + Rn + Ci
+`define OP_SBC 4'hB   // Rd = Rm - Rn - Ci  -- Note: Rm - Rn = Rm + ~Rn + 1, so when Ci = 1, add 0, when Ci = 0, add 1.
+`define OP_ADD 4'hC   // Rd = Rm + Rn
+`define OP_SUB 4'hD   // Rd = Rm - Rn
+`define OP_MUL 4'hE   // Rd = Rm * Rn
+`define OP_RSB 4'hF   // Rd = Rn - Rm (useful when Rn is immediate, e.g. 0).
+
+// ~x = -x - 1, or -x = ~x + 1
+
 
 module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, output z, output co);
    wire [3:0] sh;
@@ -118,12 +121,12 @@ module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, 
                     (op == `OP_ROR) ? ((a >> sh) | (a << (8 - sh))) :
                     (op == `OP_AND) ? (a & b) :
                     (op == `OP_XOR) ? (a ^ b) :
-                    (op == `OP_TST) ? (a & b) :
+                    (op == `OP_EQV) ? ~(a ^ b) :
                     (op == `OP_OR ) ? (a | b) :
                     (op == `OP_BIC) ? (a & ~b) :
-                    (op == `OP_MVN) ? (~a) :
+                    (op == `OP_NOR) ? ~(a | b) :
                     (op == `OP_ADC) ? (a + b + ci) :
-                    (op == `OP_SBC) ? (a + !b + ci) :
+                    (op == `OP_SBC) ? (a + ~b + ~ci) :
                     (op == `OP_ADD) ? (a + b) :
                     (op == `OP_SUB) ? (a - b) :
                     (op == `OP_MUL) ? (a * b) :
@@ -232,6 +235,8 @@ module stage1(input wire        clk,
 
         jmp_valid <= 1'b0;
 
+        // C80A = 1100_1000_0000_1010
+
         if (enable)
           if (ir_reg[15:11] == 5'b00001)
             begin
@@ -290,6 +295,7 @@ module stage1(input wire        clk,
              imm_reg <= {4'b0000, ir_reg[3:0]};
           end else if (ir_reg[15:13] == 3'b110) begin
              // CALC (RRR) class
+             opc_reg <= `C_ALU;
              alu_valid <= 1'b1;
              alu_reg <= ir_reg[12:9];
              dest_valid <= 1'b1;

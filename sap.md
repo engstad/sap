@@ -1,46 +1,52 @@
-SAP-1 instruction set is limited to 16, but with two registers, we can encode way more efficiently,
-by looking at the instructions that are wasting bits.
+# Introduction
 
-    NOP: 16 instructions
-    ADD: 16 instructions
-    SUB: 16 instructions
-    OUT: 16 instructions
-    HLT: 16 instructions
+Ben Eater's famous series brought light to the SAP (Simple As Possible) architecture, often used to
+introduce students to basic micro-electronics and programming.
 
-Probably 4 out of 16 instructions: CTRL (TESTS), ALU1 (adds, subss), ALU2 (bit-logic), IO (NOP, HLT, OUT, IN).
+There are several problems with the original instruction set:
 
-    LDA, STA, LDB, STB, JMP, JC, JZ, JNZ : {opcode[3:0], addr[3:0]}
-    ADDI, SUBI, LDI : { opcode[3:0], imm[3:0] }
+    * The memory is only 16 bytes.
+    * The instruction set is very limited.
+    * There are very few registers (accumulator, program counter, address and status register).
 
-Ideas: Have an instruction (TST/CMP) that checks for a condition, then a lot less branch and jump instructions.
+This works perfectly well for a simple-as-possible architecture, but the student is left to wonder what
+are the next steps? In search of that, we aim to create a RISC-like 16-bit architecture, which we shall
+call SAP16.
 
-We then have LD/STA and LD/STB. It is still not great to waste so much op-code space, and when the address space
-increases (256 bytes => 8 bit addresses, 64 kB => 16 bit addresses), we would have to resort to loading immediates
-using multiple bytes, e.g. (LDA, addr-byte) for 256 bytes and (LDA, HI-byte, LO-byte) for 64kB.
+# The SAP16 architecture.
 
-For 8-bit immediates, we could use the sequence (MHI, 4-bit) and (MLO, 4-bit), and then LDX A, X, LDX B, X, etc.
-then we have reduced the amount of space needed for LDA, STA, LDB, STB, etc. This means that we can go to using
-4 registers instead of just 1 or 2.
+It is important to ask, why not an 8-bit architecture? The problem with this is that an 8-bit addressing
+space can cover only 256 bytes, which is quite small. During the 8-bit era, multiple remedies were invented
+to circumvent this limitation. The 6502 processor used "banking", essentially using two registers to address
+memory. Other architectures used 16-bit "address" registers on top of 8-bit general-purpose registers.
 
-But we really want 16-byte addresses. We could do this (e.g. the Thumb architecture goes this way), but instead,
-we can separate address registers from 8-bit general purpose registers.
+In order to reduce complexity, we will simply use all 16-bit registers. This frees up quite a bit of space
+for the instruction register, so that we can add in most all normal instructions. We will also have 16
+of these registers, though the first 8 will be more general purpose than the last. If we were to be symmetric,
+we would spend 12 bits just for an `ADD D, A, B` instruction (executing `d = a + b;`), and since we can easily
+make up 16 different operations, we have essentially used up all the instruction opcode space already. However,
+with 8 registers, we only use 9 bits, thus allowing space for many other instructions.
 
-Most branches are local, meaning that we could allow relative jumps. Reserving 00xx_xxxx for general instructions,
-and 01xx_xxxx for immediate load, we can use 10xx_xxxx for
+Now, many instructions need less than 3 registers. For instance `INC D, A` (performing `d += a;`), or `LDR D, A`
+(performing `d = *a;`). On the other hand, jumps and branches needs offsets or addresses, nescessitating encoding
+values ("immediates") into the instruction. A common solution to this problem is to introduce instruction *classes*,
+so that decoding the instructions remain fairly easy.
 
-We can clearly not fit in 8 bits per instruction, so how about 16?
+## Instruction Classes
+
+
 
 # Classes
 
 ```
-  0000_xxx = BR11
-  001x_xxx = BR8
-  01xx_xxx = IMM8
-  0001_xxx = IMM8
-  100x_xxx = IMM4
-  1011_xxx = LS-IM2
-  110x_xxx = CALC
-  111x_xxx = SPECIAL
+  0000_ciii_iiii_iiii = Branch11 [0000_]
+  0001_cDDD_iiii_iiii = LdStImm8 [0001_]
+  001c_cccc_iiii_iiii = CBranch8 [001__]
+  01cc_cDDD_iiii_iiii = RegImm8N [01___]
+  100c_ccDD_DAAA_iiii = Reg2Imm4 [100__]
+  1011_cccc_DDDA_AAii = LdStImm2 [1011_]
+  110c_cccD_DDAA_ABBB = Reg3Imm0 [110__]
+  111x_xxxx_xxxx_xxxx = Special1 [111__]
 ```
 
 ## BRANCH
@@ -72,6 +78,26 @@ We can clearly not fit in 8 bits per instruction, so how about 16?
 * regular opc7, dst3, src3, src3 [110xxxx] 16 opcodes // C,D
 * special                                             // E,F
 
+# Instructions
+
+Rd = dest
+Rn = src0
+Rm = src1
+
+* Adjust SP
+* Sign/zero-extend: SXB, UXB.
+* CBZ, CBN (compare and branch)
+* Push/Pop registers
+* Reverse Bytes (REV16)
+* MLA, MUL, SMLAL (signed madd long), SMULL (signed mul long), UMLAL (unsigned madd long), UMULL (unsigned mul long)
+* SDIV, UDIV
+* Ops on high registers: ADD, CMP, MOV. (Two variants: D: `OPC Rd, Rm*` or N: `OPC Rm*, Rn`.)
+* STR, STB, LDR, LDUB, LDSB,
+* Wrapping and saturating ADD/SUB.
+* Various sign-extend and ADDs.
+* SIMD: Multiple
+* CLZ, QADD, QDADD, QSUB, RBIT, REV, SEL.
+*
 
 # PIPELINING
 

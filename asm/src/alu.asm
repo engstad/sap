@@ -22,20 +22,28 @@ start:  movi r1, 5
         out  r1
         rori r1, r1, 4
         out  r1
-        movi r1, 85
+        movi r1, 170
         movi r2, 204
         and  r0, r1, r2
         out  r0
         xor  r0, r1, r2
         out  r0
+        eqv  r0, r1, r2
+        out  r0
         or   r0, r1, r2
         out  r0
         bic  r0, r1, r2
         out  r0
-        mvn  r0, r1, r2
+        nor  r0, r1, r2
         out  r0
         mul  r0, r1, r2
         out  r0
-        rsb  r0, r1, r2
+        add  r0, r1, r2
+        out  r0
+        sub  r0, r1, r2
+        out  r0
+        adc  r0, r1, r2
+        out  r0
+        sbc  r0, r1, r2
         bra  start
         out  r0
