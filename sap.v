@@ -126,18 +126,16 @@ endmodule // shifter
 `define OP_LSR 4'h1
 `define OP_ASR 4'h2
 `define OP_ROR 4'h3
-
 `define OP_AND 4'h4
 `define OP_XOR 4'h5
 `define OP_TST 4'h6   // AND w/no results (cond flags)
 `define OP_OR  4'h7
 `define OP_BIC 4'h8   // D <- R & ~I
 `define OP_MVN 4'h9   // D <- ~S
-
-`define OP_ADD 4'hA   // Add w/carry
-`define OP_SUB 4'hB   // Sub w/carry
-`define OP_CMN 4'hC   // A + B => cond
-`define OP_CMP 4'hD   // A - B => cond
+`define OP_ADC 4'hA   // Add w/carry
+`define OP_SBC 4'hB   // Sub w/carry
+`define OP_ADD 4'hC   // Also CMN: A + B => cond
+`define OP_SUB 4'hD   // Also CMP: A - B => cond
 `define OP_MUL 4'hE   // D <- A * B
 `define OP_RSB 4'hF   // D <- I - A
 
@@ -148,7 +146,7 @@ module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, 
 
    assign {co, y} = (op == `OP_SHL) ? (a << sh) :
                     (op == `OP_LSR) ? (a >> sh) :
-                    (op == `OP_ASR) ? ($signed(a) >> sh) :
+                    (op == `OP_ASR) ? $unsigned($signed(a) >>> sh) :
                     (op == `OP_ROR) ? ((a >> sh) | (a << (8 - sh))) :
                     (op == `OP_AND) ? (a & b) :
                     (op == `OP_XOR) ? (a ^ b) :
@@ -156,10 +154,10 @@ module alu(input[7:0] a, input[7:0] b, output [7:0] y, input[3:0] op, input ci, 
                     (op == `OP_OR ) ? (a | b) :
                     (op == `OP_BIC) ? (a & ~b) :
                     (op == `OP_MVN) ? (~a) :
-                    (op == `OP_ADD) ? (a + b + ci) :
-                    (op == `OP_SUB) ? (a + !b + ci) :
-                    (op == `OP_CMN) ? (a + b) :
-                    (op == `OP_CMP) ? (a - b) :
+                    (op == `OP_ADC) ? (a + b + ci) :
+                    (op == `OP_SBC) ? (a + !b + ci) :
+                    (op == `OP_ADD) ? (a + b) :
+                    (op == `OP_SUB) ? (a - b) :
                     (op == `OP_MUL) ? (a * b) :
                     (op == `OP_RSB) ? (b - a) : 9'h000;
 
@@ -312,17 +310,8 @@ module stage1(input wire        clk,
              imm_reg <= {4'b0000, ir_reg[3:0]};
           end else if (ir_reg[15:13] == 3'b110) begin
              // CALC (RRR) class
-             alu_reg <= `OP_ADD;
              alu_valid <= 1'b1;
-
-             case (ir_reg[12:9])
-               4'h0: alu_reg <= `OP_ADD;
-               4'h1: alu_reg <= `OP_SUB;
-               default: begin
-                  alu_valid <= 1'b0;
-                  opc_reg <= `C_HALT;
-               end
-             endcase // case (ir_reg[12:9])
+             alu_reg <= ir_reg[12:9];
              dest_valid <= 1'b1;
              src0_valid <= 1'b1;
              src1_valid <= 1'b1;
