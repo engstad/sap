@@ -91,19 +91,21 @@ module regs(input clk,
 
    reg [7:0]      regs[7:0];
 
-   initial begin
-      regs[0] = 0;
-      regs[1] = 0;
-      regs[2] = 0;
-      regs[3] = 0;
-      regs[4] = 0;
-      regs[5] = 0;
-      regs[6] = 0;
-      regs[7] = 0;
+   /*
+    initial begin
+    regs[0] = 0;
+    regs[1] = 0;
+    regs[2] = 0;
+    regs[3] = 0;
+    regs[4] = 0;
+    regs[5] = 0;
+    regs[6] = 0;
+    regs[7] = 0;
    end
+    */
 
-   assign out0 = en0 ? regs[num0] : 8'hZZ;
-   assign out1 = en1 ? regs[num1] : 8'hZZ;
+   assign out0 = en0 ? regs[num0] : 8'hFF;
+   assign out1 = en1 ? regs[num1] : 8'hFF;
 
    always @(posedge clk)
      if (wr)
@@ -116,10 +118,10 @@ module adder(input[7:0] a, input[7:0] b, output [7:0] out, input sub, output zer
    assign zero = out == 0;
 endmodule // adder
 
-module shifter(input[7:0] a, input[3:0] sh, output [7:0] out, input[1:0] op);
+module shifter(input [7:0] a, input[2:0] sh, output [7:0] out, input[1:0] op);
    assign out = (op == 0) ? (a << sh) :
                 (op == 1) ? (a >> sh) :
-                (op == 2) ? $signed(a) >>> sh :
+                (op == 2) ? ($signed(a) >>> sh) :
                 ((a >> sh) | (a << (8 - sh)));
 endmodule // shifter
 
@@ -178,10 +180,12 @@ endmodule
 `define RORI  4'h7
 `define ADDI  4'h8  /* ADDI dst, src, val : dst = src + val */
 `define SUBI  4'h9  /* SUBI dst, src, val : dst = src - val */
-`define OUT   4'hA
-`define HALT  4'hB
-`define NOP   4'hC
-
+`define ADDR  4'hA
+`define BRA   4'hB
+`define SUBR  4'hC
+`define OUT   4'hD
+`define HALT  4'hE
+`define NOP   4'hF
 
 module stage1(input wire        clk,
               input wire        reset,
@@ -194,9 +198,15 @@ module stage1(input wire        clk,
               // Outputs
               output reg        o_dest_valid,
               output reg [2:0]  o_dest_no,
+
               output reg        o_src0_valid,
               output reg [2:0]  o_src0_no,
               output reg [7:0]  o_src0_reg,
+
+              output reg        o_src1_valid,
+              output reg [2:0]  o_src1_no,
+              output reg [7:0]  o_src1_reg,
+
               output reg [3:0]  o_opc_reg,
               output reg        o_imm_valid,
               output reg [7:0]  o_imm_reg,
@@ -235,6 +245,9 @@ module stage1(input wire        clk,
    reg                          src0_valid;
    reg [2:0]                    src0_no;
 
+   reg                          src1_valid;
+   reg [2:0]                    src1_no;
+
    reg [3:0]                    opc_reg;
 
    reg                          imm_valid;
@@ -250,56 +263,82 @@ module stage1(input wire        clk,
         src0_valid <= 1'b0;
         src0_no <= 0;
 
+        src1_valid <= 1'b0;
+        src1_no <= 0;
+
         imm_valid <= 1'b0;
         imm_reg <= 0;
 
-        if (ir_reg[15:14] == 2'b01) begin
-           dest_valid <= 1'b1;
-           dest_no <= ir_reg[10:8];
-           src0_valid <= 1'b1;
-           src0_no <= ir_reg[10:8];
+        o_pc_i <= 1'b0;
+        o_pc_e <= 1'b1;
+        o_pc_in <= 8'h00;
 
-           if (ir_reg[13:11] == 3'b000)
-             opc_reg <= `INCI;
-           else if (ir_reg[13:11] == 3'b001)
-             opc_reg <= `DECI;
-           else if (ir_reg[13:11] == 3'b011) begin
-              src0_valid <= 1'b0;
-              opc_reg <= `MOVI;
-           end
+        if (enable)
+          if (ir_reg[15:11] == 5'b00001) begin
+             o_pc_i <= 1'b1;
+             o_pc_e <= 1'b0;
+             o_pc_in <= ir_reg[7:0];
+          end else if (ir_reg[15:14] == 2'b01) begin
+             dest_valid <= 1'b1;
+             dest_no <= ir_reg[10:8];
+             src0_valid <= 1'b1;
+             src0_no <= ir_reg[10:8];
 
-           imm_valid <= 1'b1;
-           imm_reg <= ir_reg[7:0];
-        end else if (ir_reg[15:13] == 5'b100) begin
-           // RR4 class
-           if (ir_reg[12:10] == 3'b000)
-             opc_reg <= `SHLI;
-           else if (ir_reg[12:10] == 3'b001)
-             opc_reg <= `LSRI;
-           else if (ir_reg[12:10] == 3'b010)
-             opc_reg <= `ASRI;
-           else if (ir_reg[12:10] == 3'b011)
-             opc_reg <= `RORI;
-           else if (ir_reg[12:10] == 3'b100)
-             opc_reg <= `ADDI;
-           else if (ir_reg[12:10] == 3'b110)
-             opc_reg <= `SUBI;
+             if (ir_reg[13:11] == 3'b000)
+               opc_reg <= `INCI;
+             else if (ir_reg[13:11] == 3'b001)
+               opc_reg <= `DECI;
+             else if (ir_reg[13:11] == 3'b011) begin
+                opc_reg <= `MOVI;
+                src0_valid <= 1'b0;
+             end
 
-           dest_valid <= 1'b1;
-           dest_no <= ir_reg[9:7];
-           src0_valid <= 1'b1;
-           src0_no <= ir_reg[6:4];
-           imm_valid <= 1'b1;
-           imm_reg <= {4'b0000, ir_reg[3:0]};
-        end else if (ir_reg[15:13] == 3'b111) begin
-           if (ir_reg[11:8] == 4'b1110) begin
-              opc_reg <= `OUT;
-              src0_valid <= 1'b1;
-              src0_no <= ir_reg[2:0];
-           end else if (ir_reg[11:8] == 4'b0000) begin
-              opc_reg <= `NOP;
-           end
-        end
+             imm_valid <= 1'b1;
+             imm_reg <= ir_reg[7:0];
+          end else if (ir_reg[15:13] == 5'b100) begin
+             // RR4 class
+             if (ir_reg[12:10] == 3'b000)
+               opc_reg <= `SHLI;
+             else if (ir_reg[12:10] == 3'b001)
+               opc_reg <= `LSRI;
+             else if (ir_reg[12:10] == 3'b010)
+               opc_reg <= `ASRI;
+             else if (ir_reg[12:10] == 3'b011)
+               opc_reg <= `RORI;
+             else if (ir_reg[12:10] == 3'b100)
+               opc_reg <= `ADDI;
+             else if (ir_reg[12:10] == 3'b110)
+               opc_reg <= `SUBI;
+
+             dest_valid <= 1'b1;
+             dest_no <= ir_reg[9:7];
+             src0_valid <= 1'b1;
+             src0_no <= ir_reg[6:4];
+             imm_valid <= 1'b1;
+             imm_reg <= {4'b0000, ir_reg[3:0]};
+          end else if (ir_reg[15:13] == 3'b110) begin
+             // CALC (RRR) class
+             case (ir_reg[12:9])
+               4'h0: opc_reg <= `ADDR;
+               4'h1: opc_reg <= `SUBR;
+               default: opc_reg <= `HALT;
+             endcase // case (ir_reg[12:9])
+             o_pc_e <= opc_reg != `HALT;
+             dest_valid <= 1'b1;
+             src0_valid <= 1'b1;
+             src1_valid <= 1'b1;
+             dest_no <= ir_reg[8:6];
+             src0_no <= ir_reg[5:3];
+             src1_no <= ir_reg[2:0];
+          end else if (ir_reg[15:13] == 3'b111) begin
+             if (ir_reg[11:8] == 4'b1110) begin
+                opc_reg <= `OUT;
+                src0_valid <= 1'b1;
+                src0_no <= ir_reg[2:0];
+             end else if (ir_reg[11:8] == 4'b0000) begin
+                opc_reg <= `NOP;
+             end
+          end
      end // always @ *
 
    //
@@ -307,21 +346,28 @@ module stage1(input wire        clk,
    // the internal registers for the next stage.
    //
 
-   assign regs_en0 = dest_valid;
-   assign regs_no0 = dest_no;
+   assign regs_en0 = src0_valid;
+   assign regs_no0 = src0_no;
 
-   assign regs_en1 = src0_valid;
-   assign regs_no1 = src0_no;
+   assign regs_en1 = src1_valid;
+   assign regs_no1 = src1_no;
 
    always @(posedge clk)
      if (enable) begin
         o_dest_valid <= dest_valid;
-        o_src0_valid <= src0_valid;
         o_dest_no <= dest_no;
+
+        o_src0_valid <= src0_valid;
         o_src0_no <= src0_no;
+
+        o_src1_valid <= src1_valid;
+        o_src1_no <= src1_no;
 
         if (src0_valid) begin
            o_src0_reg <= regs_out0;
+        end
+        if (src1_valid) begin
+           o_src1_reg <= regs_out1;
         end
      end
 
@@ -353,6 +399,7 @@ endmodule // stage1
 module stage2(clk, reset, enable,
               dest_valid, dest_no,
               src0_valid, src0_no, src0_reg,
+              src1_valid, src1_no, src1_reg,
               imm_valid, imm_reg, opc_reg,
               regs_wr, regs_no, regs_in,
               out_reg);
@@ -366,6 +413,9 @@ module stage2(clk, reset, enable,
    input wire        src0_valid;
    input wire [2:0]  src0_no;
    input wire [7:0]  src0_reg;
+   input wire        src1_valid;
+   input wire [2:0]  src1_no;
+   input wire [7:0]  src1_reg;
    input wire        imm_valid;
    input wire [7:0]  imm_reg;
    input wire [3:0]  opc_reg;
@@ -378,6 +428,12 @@ module stage2(clk, reset, enable,
 
    reg [7:0]         cache_reg;
    reg [2:0]         cache_no;
+   reg               cache_valid;
+
+   initial begin
+      out_reg <= 8'h00;
+      cache_valid <= 1'b0;
+   end
 
    // The ALU unit
    wire [7:0]        alu_y;
@@ -386,6 +442,7 @@ module stage2(clk, reset, enable,
    wire [7:0]        alu_b;
 
    wire [7:0]        src0_reg_in;
+   wire [7:0]        src1_reg_in;
 
    wire              sub_op;
    wire [1:0]        shift_op;
@@ -394,16 +451,18 @@ module stage2(clk, reset, enable,
                .out(alu_y), .sub(sub_op),
                .zero(), .carry());
 
-   shifter shft(.a(alu_a), .sh(alu_b[3:0]), .out(alu_s), .op(shift_op));
+   shifter shft(.a(alu_a), .sh(alu_b[2:0]), .out(alu_s), .op(shift_op));
 
-   assign src0_reg_in = (src0_no == cache_no) ? cache_reg : src0_reg;
+   assign src0_reg_in = (cache_valid && src0_no == cache_no) ? cache_reg : src0_reg;
+   assign src1_reg_in = (cache_valid && src1_no == cache_no) ? cache_reg : src1_reg;
 
    wire              is_alu_op;
    wire              is_shift_op;
 
    assign is_alu_op = (opc_reg == `INCI) || (opc_reg == `DECI) ||
-                      (opc_reg == `ADDI) || (opc_reg == `MOVI) ||
-                      (opc_reg == `SUBI);
+                      (opc_reg == `ADDI) || (opc_reg == `SUBI) ||
+                      (opc_reg == `ADDR) || (opc_reg == `SUBR);
+
    assign is_shift_op = (opc_reg == `SHLI) || (opc_reg == `ASRI) ||
                         (opc_reg == `LSRI) || (opc_reg == `RORI);
 
@@ -412,22 +471,25 @@ module stage2(clk, reset, enable,
                      (opc_reg == `ASRI) ? 2'b10 :
                      (opc_reg == `RORI) ? 2'b11 : 2'b00;
 
-   assign sub_op = (opc_reg == `DECI) || (opc_reg == `SUBI);
+   assign sub_op = (opc_reg == `DECI) || (opc_reg == `SUBI) || (opc_reg == `SUBR);
 
-   assign alu_a = (is_alu_op || is_shift_op) && src0_valid ? src0_reg_in : 0;
-   assign alu_b = (is_alu_op || is_shift_op) && imm_valid ? imm_reg : 0;
+   assign alu_a = (is_alu_op || is_shift_op) && src0_valid ? src0_reg_in : 8'h00;
+   assign alu_b = (is_alu_op || is_shift_op) && src1_valid ? src1_reg_in :
+                  (is_alu_op || is_shift_op) && imm_valid ? imm_reg : 8'h00;
 
-   assign regs_wr = is_alu_op || is_shift_op;
+   assign regs_wr = is_alu_op || is_shift_op || opc_reg == `MOVI;
    assign regs_no = dest_valid ? dest_no : src0_no;
-   assign regs_in = is_alu_op ? alu_y : is_shift_op ? alu_s : 0;
+   assign regs_in = is_alu_op ? alu_y :
+                    is_shift_op ? alu_s :
+                    opc_reg == `MOVI ? imm_reg : 8'h00;
 
    always @(posedge clk)
      if (enable)
-       cache_reg <= regs_in;
-
-   always @(posedge clk)
-     if (enable)
-       cache_no <= regs_no;
+       if (regs_wr) begin
+          cache_valid <= 1'b1;
+          cache_reg <= regs_in;
+          cache_no <= regs_no;
+       end
 
    always @(posedge clk)
      if (enable && opc_reg == `OUT)
@@ -506,10 +568,15 @@ module sap(input wire       clk,
 
    wire        dest_valid;
    wire [2:0]  dest_no;
-   wire [7:0]  dest_reg;
+
    wire        src0_valid;
    wire [2:0]  src0_no;
    wire [7:0]  src0_reg;
+
+   wire        src1_valid;
+   wire [2:0]  src1_no;
+   wire [7:0]  src1_reg;
+
    wire [3:0]  opcode;
    wire        imm_valid;
    wire [7:0]  imm_reg;
@@ -522,21 +589,14 @@ module sap(input wire       clk,
               .enable(enable_1),
               .ir_reg(ir_reg),
               // Pipes out
-              .o_dest_valid(dest_valid),
-              .o_dest_no(dest_no),
-              .o_src0_valid(src0_valid),
-              .o_src0_no(src0_no),
-              .o_src0_reg(src0_reg),
+              .o_dest_valid(dest_valid),              .o_dest_no(dest_no),
+              .o_src0_valid(src0_valid),              .o_src0_no(src0_no),              .o_src0_reg(src0_reg),
+              .o_src1_valid(src1_valid),              .o_src1_no(src1_no),              .o_src1_reg(src1_reg),
               .o_opc_reg(opcode),
-              .o_imm_valid(imm_valid),
-              .o_imm_reg(imm_reg),
+              .o_imm_valid(imm_valid),                .o_imm_reg(imm_reg),
               // Register bank
-              .regs_en0(regs_en0),
-              .regs_no0(regs_no0),
-              .regs_out0(regs_out0),
-              .regs_en1(regs_en1),
-              .regs_no1(regs_no1),
-              .regs_out1(regs_out1),
+              .regs_en0(regs_en0),                    .regs_no0(regs_no0),              .regs_out0(regs_out0),
+              .regs_en1(regs_en1),                    .regs_no1(regs_no1),              .regs_out1(regs_out1),
               // not here
               .zero_i(zero_i),
               .zero_in(zero_in),
@@ -613,13 +673,16 @@ module top(input wire 	     sys_clk_i,
    BUFH feedback_buffer(.I(clk_feedback), .O(clk_feedback_buffered));
    IBUF sysclk_buffer(.I(sys_clk_i), .O(sys_clk));
 
-   reg [16:0]                low_speed_ctr = 0;
+   reg [23:0]                low_speed_ctr = 0;
    always @(posedge clk)
      low_speed_ctr <= low_speed_ctr + 1;
 
+   wire                      slow_clk;
    wire [7:0]                out;
 
-   sap sap(.clk(low_speed_ctr[16]), .reset(1'b0), .enable(1'b1), .out_reg(out));
+   assign slow_clk = low_speed_ctr[20];
+
+   sap sap(.clk(slow_clk), .reset(1'b0), .enable(1'b1), .out_reg(out));
 
    assign led[3:0] = out[7:4];
 
