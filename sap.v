@@ -489,22 +489,29 @@ module stage2(clk, reset, enable,
 endmodule // stage2
 
 
-module sap(input wire       clk,
-           input wire       reset,
-           input wire       enable,
-           output reg [7:0] out_reg
+module sap(input wire        clk,
+           input wire        reset,
+           input wire        enable,
+           output wire [7:0] out_reg
            );
    // Startup control
-   reg         enable_0 = 1'b0;
-   reg         enable_1 = 1'b0;
-   reg         enable_2 = 1'b0;
+   reg         enable_0;
+   reg         enable_1;
+   reg         enable_2;
+
+   initial begin
+      enable_0 = 1'b0;
+      enable_1 = 1'b0;
+      enable_2 = 1'b0;
+   end
 
    always @(posedge clk)
-     begin
-        enable_2 <= enable_1;
-        enable_1 <= enable_0;
-        enable_0 <= enable;
-     end
+     if (enable)
+       begin
+          enable_0 <= enable;
+          enable_1 <= enable_0;
+          enable_2 <= enable_1;
+       end
 
    // Program Counter implemented as a 4-bit counter
    wire pc_e;
@@ -548,9 +555,9 @@ module sap(input wire       clk,
    wire [2:0]  regs_no1;
    wire [7:0]  regs_out1;
 
-   reg         regs_wr;
-   reg [2:0]   regs_no;
-   reg [7:0]   regs_in;
+   wire        regs_wr;
+   wire [2:0]  regs_no;
+   wire [7:0]  regs_in;
 
    regs registers(.clk(clk),
                   .en0(regs_en0), .num0(regs_no0), .out0(regs_out0),
