@@ -14,11 +14,11 @@ start:  movi r1, 5
         out  r1
         movi r1, 5
         out  r1
-        shli r1, r1, 5
+        slli r1, r1, 5
         out  r1
-        asri r1, r1, 3
+        srai r1, r1, 3
         out  r1
-        lsri r1, r1, 2
+        srli r1, r1, 2
         out  r1
         rori r1, r1, 4
         out  r1
@@ -28,13 +28,9 @@ start:  movi r1, 5
         out  r0
         xor  r0, r1, r2
         out  r0
-        eqv  r0, r1, r2
-        out  r0
         or   r0, r1, r2
         out  r0
         bic  r0, r1, r2
-        out  r0
-        nor  r0, r1, r2
         out  r0
         mul  r0, r1, r2
         out  r0
@@ -42,8 +38,4 @@ start:  movi r1, 5
         out  r0
         sub  r0, r1, r2
         out  r0
-        adc  r0, r1, r2
-        out  r0
-        sbc  r0, r1, r2
-        bra  start
-        out  r0
+        jmp  start

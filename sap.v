@@ -141,6 +141,15 @@ endmodule
 `define C_OUT  4'h3
 `define C_HALT 4'h4
 
+
+`define CS_SPEC 4'b1100
+`define CS_R3I0 2'b11
+`define CS_LSI2 4'b0100
+`define CS_R1I8 2'b01
+`define CS_R2I4 2'b10
+`define CS_BR12 4'b1100
+`define CS_CBR5 2'b11
+
 module stage1(input wire        clk,
               input wire        reset,
 
@@ -238,61 +247,52 @@ module stage1(input wire        clk,
         // C80A = 1100_1000_0000_1010
 
         if (enable)
-          if (ir_reg[15:11] == 5'b00001)
+          if (ir_reg[15:12] == `CS_BR12)
             begin
                jmp_valid <= 1'b1;
-               jmp_reg <= ir_reg[10:0];
+               jmp_reg <= ir_reg[11:0];
             end
-          else if (ir_reg[15:14] == 2'b01)
+          else if (ir_reg[15:14] == `CS_R1I8)
             begin
-             dest_valid <= 1'b1;
-             dest_no <= ir_reg[10:8];
-             src0_valid <= 1'b1;
-             src0_no <= ir_reg[10:8];
+               dest_valid <= 1'b1;
+               dest_no <= ir_reg[10:8];
+               src0_valid <= 1'b1;
+               src0_no <= ir_reg[10:8];
+               imm_valid <= 1'b1;
+               imm_reg <= ir_reg[7:0];
 
-             opc_reg <= `C_ALU;
-             alu_valid <= 1'b1;
+               opc_reg <= `C_ALU;
+               alu_valid <= 1'b1;
 
-             if (ir_reg[13:11] == 3'b000)
-               alu_reg <= `OP_ADD;
-             else if (ir_reg[13:11] == 3'b001)
-               alu_reg <= `OP_SUB;
-             else if (ir_reg[13:11] == 3'b011) begin
-                alu_reg <= `OP_ADD;
-                src0_valid <= 1'b0;
-             end
-
-             imm_valid <= 1'b1;
-             imm_reg <= ir_reg[7:0];
+               case (ir_reg[13:11])
+                 3'b100: alu_reg <= `OP_ADD;
+                 3'b101: alu_reg <= `OP_SUB;
+                 3'b110: begin alu_reg <= `OP_ADD; src0_valid <= 1'b0; end
+                 // 3'b111: LUI
+               endcase
             end
           else if (ir_reg[15:13] == 5'b100) begin
              // RR4 class
              opc_reg <= `C_ALU;
              alu_valid <= 1'b1;
-
-             if (ir_reg[12:10] == 3'b000)
-               alu_reg <= `OP_SHL;
-             else if (ir_reg[12:10] == 3'b001)
-               alu_reg <= `OP_LSR;
-             else if (ir_reg[12:10] == 3'b010)
-               alu_reg <= `OP_ASR;
-             else if (ir_reg[12:10] == 3'b011)
-               alu_reg <= `OP_ROR;
-             else if (ir_reg[12:10] == 3'b100)
-               alu_reg <= `OP_ADD;
-             else if (ir_reg[12:10] == 3'b110)
-               alu_reg <= `OP_SUB;
-             else begin
-                opc_reg <= `C_HALT;
-                alu_valid <= 1'b0;
-             end
-
              dest_valid <= 1'b1;
              dest_no <= ir_reg[9:7];
              src0_valid <= 1'b1;
              src0_no <= ir_reg[6:4];
              imm_valid <= 1'b1;
              imm_reg <= {4'b0000, ir_reg[3:0]};
+             case (ir_reg[13:10])
+               // LBU
+               4'b0001: alu_reg <= `OP_XOR;
+               4'b0010: alu_reg <= `OP_OR;
+               4'b0011: alu_reg <= `OP_AND;
+               4'b0100: alu_reg <= `OP_SHL;
+               4'b0101: alu_reg <= `OP_LSR;
+               4'b0110: alu_reg <= `OP_ASR;
+               4'b0111: alu_reg <= `OP_ROR;
+
+               default: begin opc_reg <= `C_HALT; alu_valid <= 1'b0; end
+             endcase
           end else if (ir_reg[15:13] == 3'b110) begin
              // CALC (RRR) class
              opc_reg <= `C_ALU;

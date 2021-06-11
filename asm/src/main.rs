@@ -18,10 +18,9 @@ use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Class {
-    Branch11,
-    CBranch8,
-    RegImm8N,
-    RegImm8X,
+    Branch12,
+    CBranch5,
+    Reg1Imm8,
     Reg2Imm4,
     LdStImm2,
     Reg3Imm0,
@@ -31,96 +30,125 @@ pub enum Class {
 fn cls_info(cls: Class) -> (u8, u8, u8, u8, u8) {
     match cls {
         //                 Rs  Code     CZ OZ IZ
-        Class::Branch11 => (0, 0b00001, 5, 0, 11),  // (1/32) [ 3.1%]  100.0%
-        Class::CBranch8 => (0, 0b001__, 3, 5, 8),   // (1/ 8) [12.5%]    0.0%
-        Class::RegImm8N => (1, 0b01___, 2, 3, 8),   // (1/ 4) [25.0%]   37.5% 3 out of 8 taken
-        Class::RegImm8X => (1, 0b00010, 5, 0, 8),   // (1/32) [ 3.1%]  100.0%
-        Class::Reg2Imm4 => (2, 0b100__, 3, 3, 4),   // (1/ 8) [12.5%]   75.0% 6 out of 8 taken
-        Class::LdStImm2 => (3, 0b1011_, 4, 2, 2),   // (1/16) [ 6.3%]    0.0%
-        Class::Reg3Imm0 => (3, 0b110__, 3, 4, 0),   // (1/ 8) [12.5%]  100.0%
-        Class::Special0 => (2, 0b1111_, 4, 4, 8),   // (1/16) [ 6.3%]   18.8% 3 out of 16 taken
+        Class::Special0 => (2, 0b0000_, 4, 4, 8),
+        Class::Reg3Imm0 => (3, 0b00___, 2, 5, 0),  // 30 of 32
+
+        Class::LdStImm2 => (3, 0b0100_, 4, 2, 2),
+        Class::Reg1Imm8 => (1, 0b01___, 2, 3, 8),  //  7 of 8
+
+        Class::Reg2Imm4 => (2, 0b10___, 2, 4, 4),
+
+        Class::Branch12 => (0, 0b1100_, 4, 0, 12),
+        Class::CBranch5 => (2, 0b11___, 2, 3, 5),   // 6 of 8
     }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Opc {
-    INCI,
-    DECI,
-    MOVI,
-    LDRI,
-    SHLI,
-    ASRI,
-    LSRI,
-    RORI,
-    ADDI,
-    SUBI,
-    //
-    SHL,
-    LSR,
-    ASR,
-    ROR,
-    AND,
-    XOR,
-    EQV,
-    ORR,
-    BIC,
-    NOR,
-    ADC,
-    SBC,
-    ADD,
-    SUB,
-    MUL,
-    RSB,
-    //
-    BRA,
-    OUT,
+
+    SLT,   SLTU,   Res0,  Res1,   DIV,   DIVU,   REM,   REMU,
+    SLL,   SRL,    SRA,   ROR,    AND,   OR,     XOR,   BIC,
+    ADD,   SUB,    MUL,   MULH,   MULHU, MULHSU, MULB,  Res2,
+
+    LR,    SR,     // LdStImm2
+    LRR,   SRR,    // Reg1Imm8
+    INCI,  DECI,
+    MOVI,  LUI,
+
+    LBU,   XORI,   ORI,   ANDI,  // Reg2Imm4
+    SLLI,  SRLI,   SRAI,  RORI,
+    ADDI,  SLTI,   SUBI,  SLTIU, // Note: SLTIU rd, rs, 0 <=> SNEZ rd, rs
+    LH,    LB,     STH,   STB,
+
+    JMP,
+    BEQ,   BNE,
+    BLT,   BGE,
+    BLTU,  BGEU,
+
+
     HALT,
-    NOP,
+    OUT, /*IN, JR, SXB, UXB, REV8, PAUSE,
+    MOV,
+    JALR,
+    CLZ, RBIT, RBIT8, ZIP, BCDL, BCDH, FBCD, Res4,
+    AUIPC,
+    DIVB, DIVUB, REMB, REMUB, */
+
+    NOP /* pseudo */
 }
 
 fn info(opc: Opc) -> (Class, u8) {
     match opc {
-        Opc::BRA => (Class::Branch11, 0b0),
+        Opc::SLT  => (Class::Reg3Imm0, 0b01000),
+        Opc::SLTU => (Class::Reg3Imm0, 0b01001),
+        // Free
+        // Free
+        Opc::DIV  => (Class::Reg3Imm0, 0b01100),
+        Opc::DIVU => (Class::Reg3Imm0, 0b01101),
+        Opc::REM  => (Class::Reg3Imm0, 0b01110),
+        Opc::REMU => (Class::Reg3Imm0, 0b01111),
+        Opc::SLL  => (Class::Reg3Imm0, 0b10000),
+        Opc::SRL  => (Class::Reg3Imm0, 0b10001),
+        Opc::SRA  => (Class::Reg3Imm0, 0b10010),
+        Opc::ROR  => (Class::Reg3Imm0, 0b10011),
+        Opc::AND  => (Class::Reg3Imm0, 0b10100),
+        Opc::OR   => (Class::Reg3Imm0, 0b10101),
+        Opc::XOR  => (Class::Reg3Imm0, 0b10110),
+        Opc::BIC  => (Class::Reg3Imm0, 0b10111),
+
+        Opc::ADD  => (Class::Reg3Imm0, 0b11000),
+        Opc::SUB  => (Class::Reg3Imm0, 0b11001),
+        Opc::MUL  => (Class::Reg3Imm0, 0b11010),
+        Opc::MULH => (Class::Reg3Imm0, 0b11011),
+        Opc::MULHU => (Class::Reg3Imm0, 0b11100),
+        Opc::MULHSU  => (Class::Reg3Imm0, 0b11101),
+        Opc::MULB  => (Class::Reg3Imm0, 0b11110),
+        // Free
+        Opc::LR => (Class::LdStImm2, 0),
+        Opc::SR => (Class::LdStImm2, 1),
+        Opc::LRR => (Class::Reg1Imm8, 0b010),
+        Opc::SRR => (Class::Reg1Imm8, 0b011),
+        Opc::INCI => (Class::Reg1Imm8, 0b100),
+        Opc::DECI => (Class::Reg1Imm8, 0b101),
+        Opc::MOVI => (Class::Reg1Imm8, 0b110),
+        Opc::LUI => (Class::Reg1Imm8, 0b111),
         //
-        Opc::INCI => (Class::RegImm8N, 0b000),
-        Opc::DECI => (Class::RegImm8N, 0b001),
-        //
-        Opc::MOVI => (Class::RegImm8N, 0b011),
-        Opc::LDRI => (Class::RegImm8X, 0),
-        // LSP
-        // SSP
-        // ISP
-        // DSP
+        Opc::LBU  => (Class::Reg2Imm4, 0b0000),
+        Opc::XORI => (Class::Reg2Imm4, 0b0001),
+        Opc::ORI  => (Class::Reg2Imm4, 0b0010),
+        Opc::ANDI => (Class::Reg2Imm4, 0b0011),
+
+        Opc::SLLI => (Class::Reg2Imm4, 0b0100),
+        Opc::SRLI => (Class::Reg2Imm4, 0b0101),
+        Opc::SRAI => (Class::Reg2Imm4, 0b0110),
+        Opc::RORI => (Class::Reg2Imm4, 0b0111),
+
+        Opc::ADDI => (Class::Reg2Imm4, 0b1000),
+        Opc::SLTI => (Class::Reg2Imm4, 0b1001),
+        Opc::SUBI => (Class::Reg2Imm4, 0b1010),
+        Opc::SLTIU => (Class::Reg2Imm4, 0b1011),
+
+        Opc::LH  => (Class::Reg2Imm4, 0b1100),
+        Opc::LB  => (Class::Reg2Imm4, 0b1101),
+        Opc::STH => (Class::Reg2Imm4, 0b1110),
+        Opc::STB => (Class::Reg2Imm4, 0b1111),
+
+        Opc::JMP => (Class::Branch12, 0),
+        Opc::BEQ => (Class::CBranch5, 2),
+        Opc::BNE => (Class::CBranch5, 3),
+        Opc::BLT => (Class::CBranch5, 4),
+        Opc::BGE => (Class::CBranch5, 5),
+        Opc::BLTU => (Class::CBranch5, 6),
+        Opc::BGEU => (Class::CBranch5, 7),
         // =====================================
-        Opc::SHLI => (Class::Reg2Imm4, 0b000),
-        Opc::LSRI => (Class::Reg2Imm4, 0b001),
-        Opc::ASRI => (Class::Reg2Imm4, 0b010),
-        Opc::RORI => (Class::Reg2Imm4, 0b011),  // questionable
-        Opc::ADDI => (Class::Reg2Imm4, 0b100),
-        // free
-        Opc::SUBI => (Class::Reg2Imm4, 0b110),
-        // free
         // =====================================
-        Opc::SHL => (Class::Reg3Imm0, 0x0),
-        Opc::LSR => (Class::Reg3Imm0, 0x1),
-        Opc::ASR => (Class::Reg3Imm0, 0x2),
-        Opc::ROR => (Class::Reg3Imm0, 0x3),
-        Opc::AND => (Class::Reg3Imm0, 0x4),
-        Opc::XOR => (Class::Reg3Imm0, 0x5),
-        Opc::EQV => (Class::Reg3Imm0, 0x6),
-        Opc::ORR => (Class::Reg3Imm0, 0x7),
-        Opc::BIC => (Class::Reg3Imm0, 0x8),
-        Opc::NOR => (Class::Reg3Imm0, 0x9),
-        Opc::ADC => (Class::Reg3Imm0, 0xA),
-        Opc::SBC => (Class::Reg3Imm0, 0xB),
-        Opc::ADD => (Class::Reg3Imm0, 0xC),
-        Opc::SUB => (Class::Reg3Imm0, 0xD),
-        Opc::MUL => (Class::Reg3Imm0, 0xE),
-        Opc::RSB => (Class::Reg3Imm0, 0xF),
-        // =====================================
-        Opc::NOP => (Class::Special0, 0b0000),
         Opc::HALT => (Class::Special0, 0b1111),
         Opc::OUT => (Class::Special0, 0b1110),
+        // =====================================
+        Opc::NOP => (Class::Special0, 0b1101),
+        Opc::Res0 => (Class::Special0, 0b0000),
+        Opc::Res1 => (Class::Special0, 0b0000),
+        Opc::Res2 => (Class::Special0, 0b0000),
     }
 }
 
@@ -180,43 +208,57 @@ fn parse_str<'a>(i: &'a str) -> IResult<&'a str, Oper, VerboseError<&'a str>> {
 fn parse_opc<'a>(i: &'a str) -> IResult<&'a str, Opc, VerboseError<&'a str>> {
     alt((
         alt((
-            map(tag("bra"), |_| Opc::BRA),
-            map(tag("inci"), |_| Opc::INCI),
-            map(tag("deci"), |_| Opc::DECI),
-            map(tag("movi"), |_| Opc::MOVI),
-            map(tag("ldri"), |_| Opc::LDRI),
-            map(tag("shli"), |_| Opc::SHLI),
-            map(tag("asri"), |_| Opc::ASRI),
-            map(tag("lsri"), |_| Opc::LSRI),
-            map(tag("rori"), |_| Opc::RORI),
-            map(tag("addi"), |_| Opc::ADDI),
-            map(tag("subi"), |_| Opc::SUBI),
-        )),
-        //
-        alt((
-            map(tag("shl"), |_| Opc::SHL),
-            map(tag("lsr"), |_| Opc::LSR),
-            map(tag("asr"), |_| Opc::ASR),
-            map(tag("ror"), |_| Opc::ROR),
-            map(tag("and"), |_| Opc::AND),
+            map(tag("xori"), |_| Opc::XORI),
             map(tag("xor"), |_| Opc::XOR),
-            map(tag("eqv"), |_| Opc::EQV),
-            map(tag("or"), |_| Opc::ORR),
-            map(tag("orr"), |_| Opc::ORR),
-            map(tag("bic"), |_| Opc::BIC),
-            map(tag("nor"), |_| Opc::NOR),
-            map(tag("adc"), |_| Opc::ADC),
-            map(tag("sbc"), |_| Opc::SBC),
-            map(tag("add"), |_| Opc::ADD),
+            map(tag("subi"), |_| Opc::SUBI),
             map(tag("sub"), |_| Opc::SUB),
-            map(tag("mul"), |_| Opc::MUL),
-            map(tag("rsb"), |_| Opc::RSB),
-        )),
-        //
-        alt((
+            map(tag("sth"), |_| Opc::STH),
+            map(tag("stb"), |_| Opc::STB),
+            map(tag("srr"), |_| Opc::SRR),
+            map(tag("srli"), |_| Opc::SRLI),
+            map(tag("srl"), |_| Opc::SRL),
+            map(tag("srai"), |_| Opc::SRAI),
+            map(tag("sra"), |_| Opc::SRA),
+            map(tag("sr"), |_| Opc::SR),
+            map(tag("slli"), |_| Opc::SLLI),
+            map(tag("sll"), |_| Opc::SLL),
+            map(tag("rori"), |_| Opc::RORI),
+            map(tag("ror"), |_| Opc::ROR),
             map(tag("out"), |_| Opc::OUT),
+            map(tag("ori"), |_| Opc::ORI),
+            map(tag("or"), |_| Opc::OR),
+        )),
+        alt((
             map(tag("nop"), |_| Opc::NOP),
+            map(tag("mulhu"), |_| Opc::MULHU),
+            map(tag("mulhsu"), |_| Opc::MULHSU),
+            map(tag("mulh"), |_| Opc::MULH),
+            map(tag("mulb"), |_| Opc::MULB),
+            map(tag("mul"), |_| Opc::MUL),
+            map(tag("movi"), |_| Opc::MOVI),
+            map(tag("lui"), |_| Opc::LUI),
+            map(tag("lrr"), |_| Opc::LRR),
+            map(tag("lr"), |_| Opc::LR),
+            map(tag("lh"), |_| Opc::LH),
+            map(tag("lbu"), |_| Opc::LBU),
+            map(tag("lb"), |_| Opc::LB),
+            map(tag("jmp"), |_| Opc::JMP),
+            map(tag("inci"), |_| Opc::INCI),
             map(tag("halt"), |_| Opc::HALT),
+            map(tag("deci"), |_| Opc::DECI),
+            map(tag("bne"), |_| Opc::BEQ),
+            map(tag("bltu"), |_| Opc::BEQ),
+            map(tag("blt"), |_| Opc::BEQ),
+        )),
+        alt((
+            map(tag("bic"), |_| Opc::BIC),
+            map(tag("bgeu"), |_| Opc::BEQ),
+            map(tag("bge"), |_| Opc::BEQ),
+            map(tag("beq"), |_| Opc::BEQ),
+            map(tag("andi"), |_| Opc::ANDI),
+            map(tag("and"), |_| Opc::AND),
+            map(tag("addi"), |_| Opc::ADDI),
+            map(tag("add"), |_| Opc::ADD),
         )),
     ))(i)
 }
@@ -299,9 +341,9 @@ fn encode_stmt(
             let mut res =
                 (cls_code as u16) << (16 - code_sz) | (opc as u16) << (16 - code_sz - opc_sz);
 
-            if cls == Class::Branch11 {
+            if cls == Class::Branch12 {
                 if opers.len() != 1 {
-                    return Err("Too many operands to BRA".into());
+                    return Err("Too many operands to JMP".into());
                 }
                 if let Oper::Str(s) = &opers[0] {
                     if let Some(dst) = labels.get(s) {
@@ -312,10 +354,14 @@ fn encode_stmt(
                 } else if let Oper::Num(n) = &opers[0] {
                     return Ok(Some(res | *n as u16));
                 } else {
-                    return Err("Invalid operand to BRA".into());
+                    return Err("Invalid operand to JMP".into());
                 }
             } else if cls != Class::Special0 {
-                assert!(regs + if imm_sz > 0 { 1 } else { 0 } == opers.len() as u8);
+                let required = regs + if imm_sz > 0 { 1 } else { 0 };
+                if opers.len() != required as usize {
+                    return Err(format!("Wrong number of arguments ({}) given to {:?}, it needs {}.", opers.len(),
+                                       opcode, required));
+                }
 
                 let mut pos = 3 * regs + imm_sz;
                 for i in 0..opers.len() {
@@ -385,7 +431,7 @@ fn test() {
     addi r1, r2, 3
 end:
     nop
-    bra end"###,
+    jal end"###,
     );
 
     println!("{:?}", res);
@@ -397,7 +443,7 @@ end:
                 Stmt::Inst(Opc::ADDI, vec![Oper::Reg(1), Oper::Reg(2), Oper::Num(3)]),
                 Stmt::Label("end".into()),
                 Stmt::Inst(Opc::NOP, vec![]),
-                Stmt::Inst(Opc::BRA, vec![Oper::Str("end".into())])
+                Stmt::Inst(Opc::JMP, vec![Oper::Str("end".into())])
             ]
         ))
     );
@@ -407,18 +453,18 @@ end:
         assert_eq!(
             enc,
             Ok(vec![
-                0b100_100_001_010_0011,
-                0b1111_0000__0000_0000,
-                0b00001__000_0000_0010,
+                0b10_1000_001_010_0011,
+                0b0000_1101__0000_0000,
+                0b1100__0000_0000_0010,
             ])
         );
     }
 
-    assert!(false);
+    //assert!(false);
 }
 
 fn main() {
-    let prog_src = include_str!("alu.asm");
+    let prog_src = include_str!("fib.asm");
     let prog_stmts = parse_program(prog_src);
     let prog_encoding = match prog_stmts {
         Ok(stmts) => {
